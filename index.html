@@ -997,6 +997,35 @@ function snapToSentence(text, ratio) {
   return { start, end };
 }
 
+// 重點筆記 → Markdown(dateStr 由呼叫端帶入,函式保持純可測)
+function marksToMarkdown(title, marks, dateStr) {
+  const sorted = marks.slice().sort((a, b) => (a.segIndex - b.segIndex) || (a.start - b.start));
+  const groups = new Map();
+  for (const m of sorted) {
+    const ch = m.chapterTitle || "全文";
+    if (!groups.has(ch)) groups.set(ch, []);
+    groups.get(ch).push(m);
+  }
+  const lines = [
+    "---",
+    "title: " + title,
+    "exported: " + dateStr,
+    "marks: " + sorted.length,
+    "source: Audiobook｜有聲書",
+    "---",
+    "",
+    "# " + title + " — 重點筆記",
+  ];
+  for (const [ch, list] of groups) {
+    lines.push("", "## " + ch);
+    for (const m of list) {
+      lines.push("", "> " + m.text.replace(/\n/g, " "));
+      if (m.note && m.note.trim()) lines.push("", m.note.trim());
+    }
+  }
+  return lines.join("\n") + "\n";
+}
+
 /* ============ 雲端 TTS 合成（provider 插座）============ */
 // 各家單次請求長度上限不同（Google 5000 bytes、Azure 10 分鐘音訊），
 // 超限時內部依句切塊、逐塊合成後串接 MP3（MPEG frame 自含，直接串接可播）
