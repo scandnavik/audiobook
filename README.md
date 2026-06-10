@@ -18,9 +18,29 @@
 ## 使用
 
 1. 開 https://scandnavik.github.io/audiobook/ （或本地直接開 `index.html`）
-2. 「語音設定」選引擎（OpenAI／Google Cloud／Azure）並填該家的 key（或切到瀏覽器內建引擎免 key 試聽）
+2. 「語音設定」選引擎（OpenAI／Google Cloud／Azure／Gemini）並填該家的 key（或切到瀏覽器內建引擎免 key 試聽），key 來源見下方「API key 怎麼拿」
 3. 選 `.epub`／`.md`／`.txt` 檔、拖曳或貼上文字 → 載入並切段 → 按播放
 4. 手機安裝成 App 的步驟見下一節
+
+## API key 怎麼拿
+
+| 引擎 | 取得方式 |
+|------|---------|
+| OpenAI | platform.openai.com → API keys，`sk-` 開頭 |
+| Google Cloud | GCP 主控台（console.cloud.google.com）→ 啟用 **Cloud Text-to-Speech API** → 建立 API key。需要 GCP 專案＋綁帳單（免費額度照樣享有：每月 100 萬字元，Wavenet／Standard 到 400 萬） |
+| Azure | portal.azure.com → 建立 **Speech** 資源 → 「金鑰與端點」拿 key 和 region（台灣常用 `eastasia`） |
+| Gemini | aistudio.google.com → Get API key，免費、不用綁帳單 |
+
+### ⚠️ AI Studio key 特別說明
+
+**AI Studio（aistudio.google.com）拿的 key 不能用在「Google Cloud」引擎。** 它們是 Google 兩個不同的服務：
+
+- AI Studio key 屬於 **Gemini API**（`generativelanguage.googleapis.com`）→ 請選「**Gemini**」引擎，填進 Gemini API Key 欄位，立刻能用、有免費層
+- 「Google Cloud」引擎打的是 **Cloud Text-to-Speech**（`texttospeech.googleapis.com`）→ 需要上表的 GCP 專案 key
+
+填錯的症狀：播放時跳「Google: 403／API not enabled」之類的錯誤。兩種 key 都是 `AIza` 開頭、外觀無法區分，請以來源網站判斷。
+
+計費差異也要知道：Gemini 引擎按**音訊時長**計費（超出免費層後一本五萬字書約 NT$85–95），Google Cloud 引擎按**字數**計費（月免費額度內 $0，超出約 NT$6–25／本）。輕量試聽用 Gemini 最快上手，重度聽書值得辦一把 GCP key。
 
 ## 安裝到手機桌面（變成 App）
 
