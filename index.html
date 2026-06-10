@@ -1200,6 +1200,18 @@ function pcmToWav(pcmBytes, sampleRate) {
   return new Blob([buf], { type: "audio/wav" });
 }
 
+// 把多個 WAV(各自帶 44-byte 頭)剝頭合併成單一 PCM;章級組裝用
+function mergeWavPcm(wavBytesList) {
+  const first = wavBytesList[0];
+  const rate = new DataView(first.buffer, first.byteOffset + 24, 4).getUint32(0, true);
+  let total = 0;
+  for (const w of wavBytesList) total += w.length - 44;
+  const pcm = new Uint8Array(total);
+  let off = 0;
+  for (const w of wavBytesList) { pcm.set(w.subarray(44), off); off += w.length - 44; }
+  return { pcm, rate };
+}
+
 async function synthGeminiOne(text, cfg) {
   const body = {
     contents: [{ parts: [{ text }] }],
