@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 const html = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "index.html"), "utf8");
 
 export function scriptSource() {
-  const m = html.match(/<script>([\s\S]*)<\/script>/);
+  const m = html.match(/<script>([\s\S]*?)<\/script>/);
   if (!m) throw new Error("index.html 裡找不到 inline script");
   return m[1];
 }
@@ -22,6 +22,7 @@ export function fnSource(name) {
     if (html[j] === "{") depth++;
     else if (html[j] === "}") { depth--; if (!depth) break; }
   }
+  if (depth !== 0) throw new Error("fnSource: 找不到 " + name + " 的結尾大括號");
   return html.slice(m.index, j + 1);
 }
 
