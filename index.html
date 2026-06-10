@@ -315,6 +315,7 @@
     <button class="tab active" data-tab="file">選檔</button>
     <button class="tab" data-tab="paste">貼上文字</button>
     <button class="tab" data-tab="lib">書庫</button>
+    <button class="tab" data-tab="marks">重點</button>
   </div>
 
   <div class="panel active" data-panel="file">
@@ -332,6 +333,15 @@
   <div class="panel" data-panel="lib">
     <div class="lib-list" id="libList"></div>
     <div class="empty" id="libEmpty" style="padding:24px 16px">還沒有紀錄。載入過的文件會自動存進書庫，並記住聽到第幾段。</div>
+  </div>
+
+  <div class="panel" data-panel="marks">
+    <div class="row" style="margin:0 0 12px">
+      <button class="btn btn-ghost" id="marksDlBtn" disabled>下載 .md</button>
+      <button class="btn btn-ghost" id="marksCopyBtn" disabled>複製</button>
+    </div>
+    <div id="marksList"></div>
+    <div class="empty" id="marksEmpty" style="padding:24px 16px">還沒有重點。播放時按播放列的「標記」鈕，或直接在段落文字上選取一段按「標重點」。</div>
   </div>
 
   <div class="row">
@@ -1704,7 +1714,68 @@ function renderSegments() {
   $("#emptyState").hidden = State.segments.length > 0;
 }
 
-function renderMarksPanel() {} // Task 11 實作
+/* ============ 重點面板＋MD 匯出 ============ */
+function downloadBlob(blob, filename) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+
+function renderMarksPanel() {
+  const list = $("#marksList");
+  list.innerHTML = "";
+  const sorted = State.marks.slice().sort((a, b) => (a.segIndex - b.segIndex) || (a.start - b.start));
+  $("#marksEmpty").hidden = sorted.length > 0;
+  $("#marksDlBtn").disabled = !sorted.length;
+  $("#marksCopyBtn").disabled = !sorted.length;
+  let lastCh = null;
+  for (const m of sorted) {
+    const ch = m.chapterTitle || "全文";
+    if (ch !== lastCh) {
+      const h = document.createElement("div");
+      h.className = "lib-sub";
+      h.style.cssText = "margin:14px 4px 6px;font-weight:600";
+      h.textContent = ch;
+      list.appendChild(h);
+      lastCh = ch;
+    }
+    const item = document.createElement("div");
+    item.className = "seg";
+    const t = document.createElement("div");
+    t.style.cssText = "flex:1;min-width:0";
+    const q = document.createElement("div");
+    q.style.fontSize = "14px";
+    q.textContent = m.text.length > 80 ? m.text.slice(0, 80) + "…" : m.text;
+    t.appendChild(q);
+    if (m.note) {
+      const n = document.createElement("div");
+      n.className = "lib-sub";
+      n.textContent = "筆記：" + m.note;
+      t.appendChild(n);
+    }
+    item.appendChild(t);
+    item.addEventListener("click", () => { openMarkModal(m); });
+    list.appendChild(item);
+  }
+}
+
+function currentMarksMd() {
+  return marksToMarkdown(State.docTitle || "未命名文件", State.marks, new Date().toISOString().slice(0, 10));
+}
+$("#marksDlBtn").addEventListener("click", () => {
+  downloadBlob(new Blob([currentMarksMd()], { type: "text/markdown" }),
+    sanitizeFilename(State.docTitle || "未命名文件") + "-重點筆記.md");
+});
+$("#marksCopyBtn").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(currentMarksMd());
+    toast("已複製 " + State.marks.length + " 則重點，可直接貼進筆記軟體");
+  } catch (e) { toast("複製失敗，請改用下載", true); }
+});
 
 /* ============ 重點筆記:建立與編輯 ============ */
 function chapterTitleForSeg(i) {
@@ -2102,6 +2173,7 @@ $("#speedVal").textContent = parseFloat($("#speed").value).toFixed(2) + "×";
 $("#segLenVal").textContent = $("#segLen").value;
 updateUI();
 renderLibrary();
+renderMarksPanel();
 </script>
 </body>
 </html>
