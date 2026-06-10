@@ -489,6 +489,9 @@
   <div class="progress"><i id="progressBar"></i></div>
   <div class="now" id="nowText">準備中……</div>
   <div class="controls">
+    <button class="icon-btn" id="markBtn" title="標記現在唸到的句子">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 4h12v17l-6-4-6 4z"/></svg>
+    </button>
     <button class="icon-btn" id="prevBtn" title="上一段">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14l-11-7z"/></svg>
     </button>
@@ -1579,6 +1582,8 @@ function speakBrowser(text) {
     || (langPat && voices.find(v => langPat.test(v.lang) || langPat.test(v.name)))
     || voices.find(v => /zh|cmn|Chinese|中文/i.test(v.lang + v.name));
   if (v) { u.voice = v; u.lang = v.lang; }
+  State.lastBoundary = 0;
+  u.onboundary = (e) => { State.lastBoundary = e.charIndex || 0; };
   u.onend = () => { if (State.playing) onSegmentEnded(); };
   u.onerror = () => { if (State.playing) onSegmentEnded(); };
   State.curUtter = u;
@@ -1799,6 +1804,20 @@ $("#selMarkBtn").addEventListener("click", () => {
   const sel = window.getSelection();
   if (sel) sel.removeAllRanges();
 });
+/* 一鍵標記:雲端用播放時間比例推估、瀏覽器引擎用 onboundary 精準定位 */
+function markCurrent() {
+  if (State.index < 0 || !State.segments.length) { toast("還沒開始播放", true); return; }
+  const text = State.segments[State.index];
+  let ratio = 0;
+  if (cfgNow().provider === "browser") {
+    ratio = text.length ? State.lastBoundary / text.length : 0;
+  } else if (State.audio.duration) {
+    ratio = State.audio.currentTime / State.audio.duration;
+  }
+  const { start, end } = snapToSentence(text, ratio);
+  addMark(State.index, start, end, true);
+}
+$("#markBtn").addEventListener("click", markCurrent);
 
 async function loadText(raw, title, plain) {
   if (!raw || !raw.trim()) { toast("沒有內容可載入", true); return; }
