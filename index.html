@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0f1115" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="說書機" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" type="image/svg+xml" href="icon.svg" />
+<title>說書機 · Markdown 朗讀</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --bg-elev: #171a21;
+    --bg-elev2: #1f2430;
+    --line: #2a3140;
+    --text: #e7ebf2;
+    --text-dim: #9aa6b8;
+    --accent: #6ea8ff;
+    --accent-press: #4d8cff;
+    --good: #5ad19a;
+    --warn: #ffb56b;
+    --danger: #ff6b6b;
+    --radius: 14px;
+    --tap: 48px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
+                 "PingFang TC", "Microsoft JhengHei", Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    padding: calc(env(safe-area-inset-top) + 14px) 18px 12px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg);
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+  header .logo {
+    width: 30px; height: 30px; flex: 0 0 auto;
+  }
+  header h1 {
+    font-size: 17px; font-weight: 650; margin: 0; letter-spacing: .5px;
+  }
+  header .sub { font-size: 12px; color: var(--text-dim); margin-top: 1px; }
+  header .spacer { flex: 1; }
+  .icon-btn {
+    width: var(--tap); height: var(--tap); border: none; background: transparent;
+    color: var(--text-dim); cursor: pointer; border-radius: 12px;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background .15s, color .15s;
+  }
+  .icon-btn:hover { background: var(--bg-elev); color: var(--text); }
+  .icon-btn svg { width: 22px; height: 22px; }
+
+  main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 16px 180px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 輸入區 */
+  .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .tab {
+    flex: 1; min-height: var(--tap); border: 1px solid var(--line);
+    background: var(--bg-elev); color: var(--text-dim); border-radius: 12px;
+    font-size: 14px; cursor: pointer; transition: .15s;
+  }
+  .tab.active { background: var(--bg-elev2); color: var(--text); border-color: var(--accent); }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .dropzone {
+    border: 1.5px dashed var(--line); border-radius: var(--radius);
+    padding: 28px 18px; text-align: center; color: var(--text-dim);
+    background: var(--bg-elev); cursor: pointer; transition: .15s;
+  }
+  .dropzone:hover, .dropzone.drag { border-color: var(--accent); color: var(--text); background: var(--bg-elev2); }
+  .dropzone strong { color: var(--text); display: block; margin-bottom: 4px; font-size: 15px; }
+  .dropzone small { font-size: 12px; }
+
+  textarea {
+    width: 100%; min-height: 200px; resize: vertical; border-radius: var(--radius);
+    border: 1px solid var(--line); background: var(--bg-elev); color: var(--text);
+    padding: 14px; font-size: 15px; line-height: 1.7; font-family: inherit;
+  }
+  textarea:focus { outline: none; border-color: var(--accent); }
+
+  .row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .btn {
+    min-height: var(--tap); padding: 0 18px; border-radius: 12px; border: none;
+    font-size: 15px; font-weight: 600; cursor: pointer; transition: .15s;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn-primary { background: var(--accent); color: #08101f; flex: 1; }
+  .btn-primary:active { background: var(--accent-press); }
+  .btn-ghost { background: var(--bg-elev2); color: var(--text); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* 設定面板 */
+  details.settings {
+    margin: 14px 0; border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--bg-elev); overflow: hidden;
+  }
+  details.settings > summary {
+    list-style: none; cursor: pointer; padding: 14px 16px; font-weight: 600;
+    display: flex; align-items: center; gap: 10px; user-select: none;
+  }
+  details.settings > summary::-webkit-details-marker { display: none; }
+  details.settings[open] > summary { border-bottom: 1px solid var(--line); }
+  .settings-body { padding: 4px 16px 16px; }
+  .field { margin-top: 14px; }
+  .field label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 6px; }
+  .field input[type=text], .field input[type=password], .field select {
+    width: 100%; min-height: var(--tap); border-radius: 10px; border: 1px solid var(--line);
+    background: var(--bg-elev2); color: var(--text); padding: 0 12px; font-size: 15px;
+    font-family: inherit;
+  }
+  .field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
+  .field-row { display: flex; gap: 10px; }
+  .field-row > .field { flex: 1; margin-top: 14px; }
+  .range-wrap { display: flex; align-items: center; gap: 12px; }
+  .range-wrap input[type=range] { flex: 1; accent-color: var(--accent); height: var(--tap); }
+  .range-val { font-variant-numeric: tabular-nums; min-width: 42px; text-align: right; color: var(--text); }
+  .hint { font-size: 12px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
+  .hint.warn { color: var(--warn); }
+
+  /* 段落清單 */
+  .seg-meta { display: flex; align-items: center; justify-content: space-between;
+    margin: 18px 4px 10px; font-size: 13px; color: var(--text-dim); }
+  .seg-list { display: flex; flex-direction: column; gap: 8px; }
+  .seg {
+    border: 1px solid var(--line); background: var(--bg-elev); border-radius: 12px;
+    padding: 12px 14px; cursor: pointer; transition: .12s; position: relative;
+    display: flex; gap: 12px; align-items: flex-start;
+  }
+  .seg:hover { border-color: #3a4255; }
+  .seg .num {
+    flex: 0 0 auto; font-size: 12px; color: var(--text-dim);
+    font-variant-numeric: tabular-nums; min-width: 26px; padding-top: 2px;
+  }
+  .seg .txt { flex: 1; font-size: 14.5px; color: var(--text-dim); }
+  .seg.cur { border-color: var(--accent); background: var(--bg-elev2); }
+  .seg.cur .txt { color: var(--text); }
+  .seg.done .num { color: var(--good); }
+  .seg .state { flex: 0 0 auto; width: 16px; height: 16px; margin-top: 3px; }
+
+  .empty { text-align: center; color: var(--text-dim); padding: 40px 16px; font-size: 14px; }
+
+  /* 書庫 */
+  .lib-list { display: flex; flex-direction: column; gap: 8px; }
+  .lib-item {
+    border: 1px solid var(--line); background: var(--bg-elev); border-radius: 12px;
+    padding: 4px 4px 4px 14px; display: flex; align-items: center; gap: 8px;
+    cursor: pointer; transition: .12s;
+  }
+  .lib-item:hover { border-color: #3a4255; }
+  .lib-main { flex: 1; min-width: 0; padding: 8px 0; }
+  .lib-title {
+    font-size: 14.5px; font-weight: 600; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .lib-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .lib-del { flex: 0 0 auto; }
+
+  /* 底部播放列 */
+  .player {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+    background: linear-gradient(180deg, rgba(15,17,21,.6), var(--bg) 30%);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid var(--line);
+    padding: 12px 16px calc(env(safe-area-inset-bottom) + 12px);
+    transform: translateY(110%); transition: transform .25s ease;
+  }
+  .player.show { transform: translateY(0); }
+  .progress { height: 4px; background: var(--bg-elev2); border-radius: 4px; overflow: hidden; margin-bottom: 10px; }
+  .progress > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+  .now { font-size: 13px; color: var(--text-dim); margin-bottom: 10px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .now b { color: var(--text); font-weight: 600; }
+  .controls { display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .controls .icon-btn { color: var(--text); }
+  .controls .play {
+    width: 60px; height: 60px; border-radius: 50%; background: var(--accent); color: #08101f;
+  }
+  .controls .play:hover { background: var(--accent-press); }
+  .controls .play svg { width: 28px; height: 28px; }
+  .status-pill {
+    font-size: 11px; color: var(--text-dim); margin-left: auto;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .status-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); }
+  .status-pill.loading .dot { background: var(--warn); animation: pulse 1s infinite; }
+  .status-pill.playing .dot { background: var(--good); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%) translateY(20px);
+    background: var(--bg-elev2); color: var(--text); border: 1px solid var(--line);
+    padding: 12px 18px; border-radius: 12px; font-size: 14px; z-index: 50;
+    opacity: 0; transition: .25s; max-width: 90vw; text-align: center;
+    box-shadow: 0 8px 30px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.err { border-color: var(--danger); }
+</style>
+</head>
+<body>
+
+<header>
+  <svg class="logo" viewBox="0 0 24 24" fill="none" stroke="#6ea8ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 5.5C3 4.7 3.7 4 4.5 4H11v15H4.5C3.7 19 3 18.3 3 17.5V5.5Z"/>
+    <path d="M21 5.5C21 4.7 20.3 4 19.5 4H13v15h6.5c.8 0 1.5-.7 1.5-1.5V5.5Z"/>
+    <path d="M16.5 9.5a2 2 0 0 1 0 4"/>
+  </svg>
+  <div>
+    <h1>說書機</h1>
+    <div class="sub">Markdown 朗讀 · 雲端高音質</div>
+  </div>
+  <div class="spacer"></div>
+  <button class="icon-btn" id="installBtn" title="加到主畫面" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 21h14"/></svg>
+  </button>
+</header>
+
+<main>
+  <!-- 輸入切換 -->
+  <div class="tabs">
+    <button class="tab active" data-tab="file">選 .md 檔</button>
+    <button class="tab" data-tab="paste">貼上文字</button>
+    <button class="tab" data-tab="lib">書庫</button>
+  </div>
+
+  <div class="panel active" data-panel="file">
+    <div class="dropzone" id="dropzone">
+      <strong>點此選檔，或拖曳檔案進來</strong>
+      <small>支援 .md / .markdown / .txt</small>
+      <input type="file" id="fileInput" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden />
+    </div>
+  </div>
+
+  <div class="panel" data-panel="paste">
+    <textarea id="pasteArea" placeholder="把 Markdown 或純文字貼進來……"></textarea>
+  </div>
+
+  <div class="panel" data-panel="lib">
+    <div class="lib-list" id="libList"></div>
+    <div class="empty" id="libEmpty" style="padding:24px 16px">還沒有紀錄。載入過的文件會自動存進書庫，並記住聽到第幾段。</div>
+  </div>
+
+  <div class="row">
+    <button class="btn btn-primary" id="loadBtn">載入並切段</button>
+    <button class="btn btn-ghost" id="clearBtn">清空</button>
+  </div>
+
+  <!-- 設定 -->
+  <details class="settings" id="settings">
+    <summary>
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H1a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 2.6 7a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 9 2.6V2a2 2 0 1 1 4 0v.1A1.7 1.7 0 0 0 17 4.6a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H23a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1.7Z"/></svg>
+      語音設定
+    </summary>
+    <div class="settings-body">
+      <div class="field">
+        <label>語音引擎</label>
+        <select id="provider">
+          <option value="openai">OpenAI（雲端高音質，需 API key）</option>
+          <option value="browser">瀏覽器內建（免費，免 key）</option>
+        </select>
+      </div>
+
+      <div id="openaiFields">
+        <div class="field">
+          <label>OpenAI API Key（只存在這支手機本地，不會上傳）</label>
+          <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off" />
+          <div class="hint">在設定畫面填入後會記住。播放時直接從你的瀏覽器連 OpenAI，內容不經過任何中間伺服器。</div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>模型</label>
+            <select id="model">
+              <option value="gpt-4o-mini-tts">gpt-4o-mini-tts（最新，可給語氣）</option>
+              <option value="tts-1-hd">tts-1-hd（高音質）</option>
+              <option value="tts-1">tts-1（最快）</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>音色</label>
+            <select id="voice">
+              <option value="alloy">alloy（中性）</option>
+              <option value="nova">nova（明亮女聲）</option>
+              <option value="shimmer">shimmer（柔和女聲）</option>
+              <option value="echo">echo（沉穩男聲）</option>
+              <option value="onyx">onyx（低沉男聲）</option>
+              <option value="fable">fable（敘事感）</option>
+              <option value="sage">sage（溫和）</option>
+              <option value="coral">coral（活潑）</option>
+            </select>
+          </div>
+        </div>
+        <div class="field" id="instructionsField">
+          <label>語氣指示（僅 gpt-4o-mini-tts，可留空）</label>
+          <input type="text" id="instructions" placeholder="例：用沉穩、像說書人的語氣，自然斷句" />
+        </div>
+      </div>
+
+      <div id="browserFields" hidden>
+        <div class="field">
+          <label>系統語音</label>
+          <select id="browserVoice"></select>
+          <div class="hint">用手機作業系統內建的語音，免費、可離線，但中文自然度視機型而定。</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>語速 <span class="range-val" id="speedVal">1.0×</span></label>
+        <div class="range-wrap">
+          <input type="range" id="speed" min="0.5" max="2" step="0.05" value="1" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label>每段最長字數 <span class="range-val" id="segLenVal">1500</span></label>
+        <div class="range-wrap">
+          <input type="range" id="segLen" min="300" max="3000" step="100" value="1500" />
+        </div>
+        <div class="hint">字數越大、請求次數越少（省錢），但首段等待越久。OpenAI 單次上限約 4000 字。</div>
+      </div>
+
+      <div class="field">
+        <label><input type="checkbox" id="skipCode" checked style="vertical-align:-2px"> 跳過程式碼區塊不朗讀</label>
+      </div>
+      <div class="field">
+        <label><input type="checkbox" id="useCache" checked style="vertical-align:-2px"> 快取已合成語音（重播 / 重開省 API 費用）</label>
+      </div>
+      <div class="row">
+        <button class="btn btn-ghost" id="clearCacheBtn">清空語音快取</button>
+      </div>
+    </div>
+  </details>
+
+  <!-- 段落 -->
+  <div class="seg-meta" id="segMeta" hidden>
+    <span id="segCount">0 段</span>
+    <span id="segChars">0 字</span>
+  </div>
+  <div class="seg-list" id="segList"></div>
+  <div class="empty" id="emptyState">載入一份 Markdown，就能開始聽。</div>
+</main>
+
+<!-- 播放控制列 -->
+<div class="player" id="player">
+  <div class="progress"><i id="progressBar"></i></div>
+  <div class="now" id="nowText">準備中……</div>
+  <div class="controls">
+    <button class="icon-btn" id="prevBtn" title="上一段">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14l-11-7z"/></svg>
+    </button>
+    <button class="icon-btn play" id="playBtn" title="播放/暫停">
+      <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <button class="icon-btn" id="nextBtn" title="下一段">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5l11 7-11 7z"/></svg>
+    </button>
+    <span class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">待機</span></span>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ============ 小工具 ============ */
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+function toast(msg, isErr) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.classList.toggle("err", !!isErr);
+  t.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove("show"), 2600);
+}
+async function sha1(str) {
+  const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+/* ============ 設定持久化 ============ */
+const SKEYS = ["provider","apiKey","model","voice","instructions","speed","segLen","skipCode","useCache","browserVoice"];
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem("shuoshu.settings") || "{}");
+    for (const k of SKEYS) {
+      const el = $("#" + k);
+      if (!el || s[k] === undefined) continue;
+      if (el.type === "checkbox") el.checked = s[k];
+      else el.value = s[k];
+    }
+  } catch (e) {}
+}
+function saveSettings() {
+  const s = {};
+  for (const k of SKEYS) {
+    const el = $("#" + k);
+    if (!el) continue;
+    s[k] = el.type === "checkbox" ? el.checked : el.value;
+  }
+  localStorage.setItem("shuoshu.settings", JSON.stringify(s));
+}
+
+/* ============ Markdown → 朗讀文字 ============ */
+function cleanMarkdown(md, skipCode) {
+  let t = md.replace(/\r\n/g, "\n");
+  // 移除 front matter
+  t = t.replace(/^---\n[\s\S]*?\n---\n/, "");
+  // 程式碼區塊
+  if (skipCode) {
+    t = t.replace(/```[\s\S]*?```/g, "\n");
+    t = t.replace(/~~~[\s\S]*?~~~/g, "\n");
+  } else {
+    t = t.replace(/```(\w+)?\n?/g, "\n").replace(/~~~/g, "\n");
+  }
+  // 圖片：保留 alt
+  t = t.replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1");
+  // 連結：保留文字
+  t = t.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
+  // 行內程式碼標記
+  t = t.replace(/`([^`]+)`/g, "$1");
+  // 標題標記（保留文字，後面補句號讓它停頓）
+  t = t.replace(/^#{1,6}\s+(.*)$/gm, (m, p1) => p1.replace(/[。.!?！？]$/, "") + "。");
+  // 粗體 / 斜體 / 刪除線
+  t = t.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1");
+  t = t.replace(/__([^_]+)__/g, "$1").replace(/_([^_]+)_/g, "$1");
+  t = t.replace(/~~([^~]+)~~/g, "$1");
+  // 引用
+  t = t.replace(/^\s*>\s?/gm, "");
+  // 清單符號
+  t = t.replace(/^\s*[-*+]\s+/gm, "");
+  t = t.replace(/^\s*\d+\.\s+/gm, "");
+  // 表格分隔線
+  t = t.replace(/^\s*\|?[\s:|-]+\|?\s*$/gm, "");
+  // 表格：把 | 換成頓號
+  t = t.replace(/^\s*\|(.+)\|\s*$/gm, (m, p1) => p1.split("|").map(s => s.trim()).filter(Boolean).join("、"));
+  // 水平線
+  t = t.replace(/^\s*([-*_])\1{2,}\s*$/gm, "\n");
+  // 殘留 HTML 標籤
+  t = t.replace(/<[^>]+>/g, "");
+  // HTML 實體
+  t = t.replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+  // 壓縮空白
+  t = t.replace(/[ \t]+/g, " ");
+  t = t.replace(/\n{3,}/g, "\n\n");
+  return t.trim();
+}
+
+// 把長文切成朗讀段：先依空行分段，過長的再依句子切
+function splitIntoSegments(text, maxLen) {
+  const paras = text.split(/\n{2,}/).map(p => p.replace(/\n/g, " ").trim()).filter(Boolean);
+  const out = [];
+  for (const p of paras) {
+    if (p.length <= maxLen) { out.push(p); continue; }
+    // 依句末標點切句
+    const sentences = p.match(/[^。！？!?\.]+[。！？!?\.]+|[^。！？!?\.]+$/g) || [p];
+    let buf = "";
+    for (const s of sentences) {
+      if ((buf + s).length > maxLen && buf) { out.push(buf.trim()); buf = ""; }
+      if (s.length > maxLen) {
+        // 單句仍超長，硬切
+        let rest = s;
+        while (rest.length > maxLen) { out.push(rest.slice(0, maxLen).trim()); rest = rest.slice(maxLen); }
+        buf += rest;
+      } else {
+        buf += s;
+      }
+    }
+    if (buf.trim()) out.push(buf.trim());
+  }
+  return out;
+}
+
+/* ============ 語音快取＋書庫（IndexedDB）============ */
+const DB_NAME = "shuoshu.cache", STORE = "audio", DOCS = "docs";
+let _db = null;
+function openDB() {
+  return new Promise((resolve, reject) => {
+    if (_db) return resolve(_db);
+    const req = indexedDB.open(DB_NAME, 2);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      if (!db.objectStoreNames.contains(DOCS)) db.createObjectStore(DOCS, { keyPath: "id" });
+    };
+    req.onsuccess = () => { _db = req.result; resolve(_db); };
+    req.onerror = () => reject(req.error);
+  });
+}
+async function cacheGet(key) {
+  try {
+    const db = await openDB();
+    return await new Promise((res, rej) => {
+      const tx = db.transaction(STORE, "readonly").objectStore(STORE).get(key);
+      tx.onsuccess = () => res(tx.result || null);
+      tx.onerror = () => rej(tx.error);
+    });
+  } catch (e) { return null; }
+}
+async function cachePut(key, blob) {
+  try {
+    const db = await openDB();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(STORE, "readwrite").objectStore(STORE).put(blob, key);
+      tx.onsuccess = () => res();
+      tx.onerror = () => rej(tx.error);
+    });
+  } catch (e) {}
+}
+async function cacheClear() {
+  try {
+    const db = await openDB();
+    await new Promise((res) => {
+      const tx = db.transaction(STORE, "readwrite").objectStore(STORE).clear();
+      tx.onsuccess = () => res(); tx.onerror = () => res();
+    });
+  } catch (e) {}
+}
+
+/* ============ 書庫（文件＋續聽進度）============ */
+async function docsPut(doc) {
+  try {
+    const db = await openDB();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(DOCS, "readwrite").objectStore(DOCS).put(doc);
+      tx.onsuccess = () => res(); tx.onerror = () => rej(tx.error);
+    });
+  } catch (e) {}
+}
+async function docsGet(id) {
+  try {
+    const db = await openDB();
+    return await new Promise((res, rej) => {
+      const tx = db.transaction(DOCS, "readonly").objectStore(DOCS).get(id);
+      tx.onsuccess = () => res(tx.result || null);
+      tx.onerror = () => rej(tx.error);
+    });
+  } catch (e) { return null; }
+}
+async function docsAll() {
+  try {
+    const db = await openDB();
+    const all = await new Promise((res, rej) => {
+      const tx = db.transaction(DOCS, "readonly").objectStore(DOCS).getAll();
+      tx.onsuccess = () => res(tx.result || []);
+      tx.onerror = () => rej(tx.error);
+    });
+    return all.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  } catch (e) { return []; }
+}
+async function docsDelete(id) {
+  try {
+    const db = await openDB();
+    await new Promise((res) => {
+      const tx = db.transaction(DOCS, "readwrite").objectStore(DOCS).delete(id);
+      tx.onsuccess = () => res(); tx.onerror = () => res();
+    });
+  } catch (e) {}
+}
+function guessTitle(raw) {
+  const h = raw.match(/^#{1,6}\s+(.+)$/m);
+  if (h) return h[1].replace(/[#*`]/g, "").trim().slice(0, 40);
+  const line = raw.split("\n").map(s => s.trim()).find(s => s && !/^---/.test(s));
+  return (line || "未命名文件").slice(0, 40);
+}
+
+/* ============ OpenAI TTS 合成 ============ */
+async function synthOpenAI(text, cfg) {
+  const body = { model: cfg.model, input: text, voice: cfg.voice, response_format: "mp3" };
+  if (cfg.model.startsWith("tts-1")) body.speed = cfg.speed;            // 只有 tts-1 系列支援 speed
+  if (cfg.model === "gpt-4o-mini-tts" && cfg.instructions) body.instructions = cfg.instructions;
+  const resp = await fetch("https://api.openai.com/v1/audio/speech", {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + cfg.apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    let msg = resp.status + " " + resp.statusText;
+    try { const j = await resp.json(); if (j.error?.message) msg = j.error.message; } catch (e) {}
+    throw new Error("OpenAI: " + msg);
+  }
+  return await resp.blob();
+}
+
+/* ============ 播放引擎 ============ */
+const State = {
+  segments: [],          // string[]
+  index: -1,             // 當前段
+  playing: false,
+  mode: "audio",         // 'audio'（雲端）| 'speech'（瀏覽器）
+  audio: new Audio(),
+  prefetching: new Set(),// 正在預抓的 index
+  blobUrls: new Map(),   // index -> objectURL（記憶體）
+  doneSet: new Set(),
+  curUtter: null,        // 瀏覽器語音 utterance
+  docId: null,           // 書庫文件 id（sha1(raw)）
+};
+
+// 把當前聽到第幾段寫回書庫（fire-and-forget）
+async function saveProgress() {
+  if (!State.docId || State.index < 0) return;
+  const doc = await docsGet(State.docId);
+  if (!doc) return;
+  doc.lastIndex = State.index;
+  doc.total = State.segments.length;
+  doc.updatedAt = Date.now();
+  await docsPut(doc);
+}
+
+function cfgNow() {
+  return {
+    provider: $("#provider").value,
+    apiKey: $("#apiKey").value.trim(),
+    model: $("#model").value,
+    voice: $("#voice").value,
+    instructions: $("#instructions").value.trim(),
+    speed: parseFloat($("#speed").value),
+    useCache: $("#useCache").checked,
+    browserVoice: $("#browserVoice").value,
+  };
+}
+
+async function segCacheKey(text, cfg) {
+  return "v1|" + cfg.model + "|" + cfg.voice + "|" + cfg.speed + "|" + (cfg.instructions || "") + "|" + await sha1(text);
+}
+
+// 取得某段的可播放 URL（含快取與預抓去重）
+async function getSegmentUrl(i) {
+  if (State.blobUrls.has(i)) return State.blobUrls.get(i);
+  const cfg = cfgNow();
+  const text = State.segments[i];
+  const key = await segCacheKey(text, cfg);
+  let blob = null;
+  if (cfg.useCache) blob = await cacheGet(key);
+  if (!blob) {
+    blob = await synthOpenAI(text, cfg);
+    if (cfg.useCache) cachePut(key, blob);
+  }
+  const url = URL.createObjectURL(blob);
+  State.blobUrls.set(i, url);
+  return url;
+}
+
+function prefetch(i) {
+  if (i < 0 || i >= State.segments.length) return;
+  if (State.blobUrls.has(i) || State.prefetching.has(i)) return;
+  if (cfgNow().provider !== "openai") return;
+  State.prefetching.add(i);
+  getSegmentUrl(i).catch(() => {}).finally(() => State.prefetching.delete(i));
+}
+
+function setStatus(kind, text) {
+  const pill = $("#statusPill");
+  pill.className = "status-pill" + (kind ? " " + kind : "");
+  $("#statusText").textContent = text;
+}
+
+function updateUI() {
+  $("#player").classList.toggle("show", State.segments.length > 0);
+  $$(".seg").forEach((el, i) => {
+    el.classList.toggle("cur", i === State.index);
+    el.classList.toggle("done", State.doneSet.has(i));
+  });
+  const cur = State.index >= 0 ? State.segments[State.index] : "";
+  $("#nowText").innerHTML = State.segments.length
+    ? `<b>第 ${State.index + 1} / ${State.segments.length} 段</b> · ${cur.slice(0, 40)}${cur.length > 40 ? "…" : ""}`
+    : "準備中……";
+  const pct = State.segments.length ? ((State.index + (State.playing ? 0.5 : 0)) / State.segments.length) * 100 : 0;
+  $("#progressBar").style.width = Math.min(100, pct) + "%";
+  $("#playIcon").innerHTML = State.playing
+    ? '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>'   // pause
+    : '<path d="M8 5v14l11-7z"/>';               // play
+  // 捲動當前段進視窗
+  if (State.index >= 0) {
+    const el = $$(".seg")[State.index];
+    if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+}
+
+async function playIndex(i) {
+  if (i < 0 || i >= State.segments.length) { stopAll(); return; }
+  stopAudioOnly();
+  State.index = i;
+  State.playing = true;
+  const cfg = cfgNow();
+  updateUI();
+  saveProgress();
+
+  if (cfg.provider === "browser") {
+    setStatus("playing", "朗讀中");
+    speakBrowser(State.segments[i]);
+    return;
+  }
+
+  // 雲端模式
+  if (!cfg.apiKey) { stopAll(); toast("請先在「語音設定」填入 OpenAI API Key", true); $("#settings").open = true; return; }
+  setStatus("loading", "合成中");
+  try {
+    const url = await getSegmentUrl(i);
+    if (State.index !== i || !State.playing) return; // 期間被切換
+    State.audio.src = url;
+    State.audio.playbackRate = 1; // 語速已在合成端處理
+    await State.audio.play();
+    setStatus("playing", "播放中");
+    prefetch(i + 1); // 預抓下一段
+  } catch (e) {
+    State.playing = false;
+    setStatus("", "錯誤");
+    updateUI();
+    toast(e.message || "合成失敗", true);
+  }
+}
+
+function speakBrowser(text) {
+  const u = new SpeechSynthesisUtterance(text);
+  const cfg = cfgNow();
+  u.rate = cfg.speed;
+  const voices = speechSynthesis.getVoices();
+  const v = voices.find(v => v.name === cfg.browserVoice) || voices.find(v => /zh|cmn|Chinese|中文/i.test(v.lang + v.name));
+  if (v) u.voice = v;
+  u.onend = () => { if (State.playing) onSegmentEnded(); };
+  u.onerror = () => { if (State.playing) onSegmentEnded(); };
+  State.curUtter = u;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+
+function onSegmentEnded() {
+  State.doneSet.add(State.index);
+  if (State.index + 1 < State.segments.length) {
+    playIndex(State.index + 1);
+  } else {
+    stopAll();
+    toast("全部朗讀完畢");
+  }
+}
+
+function stopAudioOnly() {
+  try { State.audio.pause(); } catch (e) {}
+  speechSynthesis.cancel();
+}
+function stopAll() {
+  State.playing = false;
+  stopAudioOnly();
+  setStatus("", "待機");
+  updateUI();
+}
+
+function togglePlay() {
+  if (!State.segments.length) return;
+  const cfg = cfgNow();
+  if (State.playing) {
+    // 暫停
+    State.playing = false;
+    if (cfg.provider === "browser") speechSynthesis.pause();
+    else State.audio.pause();
+    setStatus("", "暫停");
+    updateUI();
+  } else {
+    // 繼續 / 從頭
+    if (State.index < 0) { playIndex(0); return; }
+    State.playing = true;
+    if (cfg.provider === "browser") {
+      if (speechSynthesis.paused) speechSynthesis.resume();
+      else speakBrowser(State.segments[State.index]);
+      setStatus("playing", "朗讀中");
+    } else {
+      if (State.audio.src) { State.audio.play(); setStatus("playing", "播放中"); }
+      else playIndex(State.index);
+    }
+    updateUI();
+  }
+}
+
+State.audio.addEventListener("ended", () => { if (State.playing) onSegmentEnded(); });
+State.audio.addEventListener("timeupdate", () => {
+  if (!State.audio.duration) return;
+  const segFrac = State.audio.currentTime / State.audio.duration;
+  const pct = ((State.index + segFrac) / State.segments.length) * 100;
+  $("#progressBar").style.width = Math.min(100, pct) + "%";
+});
+
+/* ============ 段落渲染 ============ */
+function renderSegments() {
+  const list = $("#segList");
+  list.innerHTML = "";
+  State.segments.forEach((s, i) => {
+    const div = document.createElement("div");
+    div.className = "seg";
+    div.innerHTML = `<span class="num">${i + 1}</span><span class="txt"></span>`;
+    div.querySelector(".txt").textContent = s.length > 120 ? s.slice(0, 120) + "…" : s;
+    div.addEventListener("click", () => playIndex(i));
+    list.appendChild(div);
+  });
+  const chars = State.segments.reduce((a, s) => a + s.length, 0);
+  $("#segCount").textContent = State.segments.length + " 段";
+  $("#segChars").textContent = chars.toLocaleString() + " 字";
+  $("#segMeta").hidden = State.segments.length === 0;
+  $("#emptyState").hidden = State.segments.length > 0;
+}
+
+async function loadText(raw, title) {
+  if (!raw || !raw.trim()) { toast("沒有內容可載入", true); return; }
+  stopAll();
+  // 釋放舊的 blob url
+  State.blobUrls.forEach(u => URL.revokeObjectURL(u));
+  State.blobUrls.clear();
+  State.doneSet.clear();
+  State.prefetching.clear();
+  State.index = -1;
+  State.docId = null;
+
+  const clean = cleanMarkdown(raw, $("#skipCode").checked);
+  const maxLen = parseInt($("#segLen").value, 10);
+  State.segments = splitIntoSegments(clean, maxLen);
+  renderSegments();
+
+  // 登錄書庫＋撈續聽進度
+  let resumeAt = -1;
+  try {
+    const id = await sha1(raw);
+    State.docId = id;
+    const old = await docsGet(id);
+    const doc = old || { id, raw, title: title || guessTitle(raw), createdAt: Date.now(), lastIndex: -1 };
+    if (title) doc.title = title;
+    doc.segLen = maxLen;
+    doc.total = State.segments.length;
+    doc.updatedAt = Date.now();
+    await docsPut(doc);
+    if (old && old.lastIndex > 0 && old.lastIndex < State.segments.length) resumeAt = old.lastIndex;
+    renderLibrary();
+  } catch (e) {}
+
+  if (resumeAt > 0) {
+    State.index = resumeAt;
+    for (let k = 0; k < resumeAt; k++) State.doneSet.add(k);
+  }
+  updateUI();
+  if (State.segments.length) {
+    toast(resumeAt > 0
+      ? `上次聽到第 ${resumeAt + 1} 段，按播放從那裡繼續`
+      : `已切成 ${State.segments.length} 段，按播放開始`);
+    if (cfgNow().provider === "openai" && cfgNow().apiKey) prefetch(resumeAt > 0 ? resumeAt : 0);
+  }
+}
+
+/* ============ 書庫渲染 ============ */
+async function renderLibrary() {
+  const docs = await docsAll();
+  const list = $("#libList");
+  list.innerHTML = "";
+  $("#libEmpty").hidden = docs.length > 0;
+  docs.forEach(d => {
+    const div = document.createElement("div");
+    div.className = "lib-item";
+    const heard = Math.min((d.lastIndex ?? -1) + 1, d.total || 0);
+    const prog = d.total ? (heard >= d.total ? "已聽完" : `聽到 ${heard} / ${d.total} 段`) : "";
+    const date = d.updatedAt ? new Date(d.updatedAt).toLocaleDateString("zh-TW") : "";
+    div.innerHTML = `
+      <div class="lib-main">
+        <div class="lib-title"></div>
+        <div class="lib-sub">${prog}${prog && date ? " · " : ""}${date}</div>
+      </div>
+      <button class="icon-btn lib-del" title="刪除紀錄">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-9 0 1 13h8l1-13"/></svg>
+      </button>`;
+    div.querySelector(".lib-title").textContent = d.title || "未命名文件";
+    div.querySelector(".lib-main").addEventListener("click", () => openDoc(d));
+    div.querySelector(".lib-del").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!confirm(`刪除「${d.title}」的書庫紀錄？（語音快取不受影響）`)) return;
+      await docsDelete(d.id);
+      if (State.docId === d.id) State.docId = null;
+      renderLibrary();
+    });
+    list.appendChild(div);
+  });
+}
+async function openDoc(d) {
+  // 用當時的切段長度重切，續聽段數才對得上
+  if (d.segLen) {
+    $("#segLen").value = d.segLen;
+    $("#segLenVal").textContent = d.segLen;
+  }
+  lastRaw = d.raw;
+  await loadText(d.raw, d.title);
+}
+
+/* ============ UI 綁定 ============ */
+let lastRaw = "";
+
+// 分頁切換
+$$(".tab").forEach(tab => tab.addEventListener("click", () => {
+  $$(".tab").forEach(t => t.classList.remove("active"));
+  $$(".panel").forEach(p => p.classList.remove("active"));
+  tab.classList.add("active");
+  $(`.panel[data-panel="${tab.dataset.tab}"]`).classList.add("active");
+}));
+
+// 選檔
+$("#dropzone").addEventListener("click", () => $("#fileInput").click());
+$("#fileInput").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    lastRaw = r.result;
+    $("#dropzone").querySelector("strong").textContent = f.name;
+    loadText(lastRaw, f.name);
+  };
+  r.readAsText(f);
+});
+// 拖曳
+["dragover", "dragenter"].forEach(ev => $("#dropzone").addEventListener(ev, e => { e.preventDefault(); $("#dropzone").classList.add("drag"); }));
+["dragleave", "drop"].forEach(ev => $("#dropzone").addEventListener(ev, e => { e.preventDefault(); $("#dropzone").classList.remove("drag"); }));
+$("#dropzone").addEventListener("drop", (e) => {
+  const f = e.dataTransfer.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => { lastRaw = r.result; $("#dropzone").querySelector("strong").textContent = f.name; loadText(lastRaw, f.name); };
+  r.readAsText(f);
+});
+
+$("#loadBtn").addEventListener("click", () => {
+  const active = $(".tab.active").dataset.tab;
+  if (active === "paste") { lastRaw = $("#pasteArea").value; }
+  loadText(lastRaw);
+});
+$("#clearBtn").addEventListener("click", () => {
+  stopAll();
+  State.segments = []; State.index = -1; lastRaw = "";
+  $("#pasteArea").value = "";
+  $("#dropzone").querySelector("strong").textContent = "點此選檔，或拖曳檔案進來";
+  renderSegments(); updateUI();
+});
+
+// 播放控制
+$("#playBtn").addEventListener("click", togglePlay);
+$("#prevBtn").addEventListener("click", () => { if (State.index > 0) playIndex(State.index - 1); });
+$("#nextBtn").addEventListener("click", () => { if (State.index < State.segments.length - 1) playIndex(State.index + 1); });
+
+// 設定變動 → 存檔
+SKEYS.forEach(k => {
+  const el = $("#" + k);
+  if (el) el.addEventListener("change", saveSettings);
+});
+$("#speed").addEventListener("input", () => { $("#speedVal").textContent = parseFloat($("#speed").value).toFixed(2) + "×"; });
+$("#segLen").addEventListener("input", () => { $("#segLenVal").textContent = $("#segLen").value; });
+$("#provider").addEventListener("change", () => {
+  const p = $("#provider").value;
+  $("#openaiFields").hidden = p !== "openai";
+  $("#browserFields").hidden = p !== "browser";
+});
+$("#model").addEventListener("change", () => {
+  $("#instructionsField").style.display = $("#model").value === "gpt-4o-mini-tts" ? "" : "none";
+});
+$("#clearCacheBtn").addEventListener("click", async () => { await cacheClear(); toast("已清空語音快取"); });
+
+// 瀏覽器語音清單
+function loadBrowserVoices() {
+  const sel = $("#browserVoice");
+  const voices = speechSynthesis.getVoices();
+  const saved = (JSON.parse(localStorage.getItem("shuoshu.settings") || "{}")).browserVoice;
+  sel.innerHTML = "";
+  voices.forEach(v => {
+    const o = document.createElement("option");
+    o.value = v.name; o.textContent = `${v.name} (${v.lang})`;
+    if (v.name === saved) o.selected = true;
+    sel.appendChild(o);
+  });
+  // 中文優先排前面
+  const zh = voices.filter(v => /zh|cmn|Chinese|中文/i.test(v.lang + v.name));
+  if (zh.length && !saved) sel.value = zh[0].name;
+}
+if ("speechSynthesis" in window) {
+  loadBrowserVoices();
+  speechSynthesis.onvoiceschanged = loadBrowserVoices;
+}
+
+// 鎖屏 / 媒體鍵控制
+if ("mediaSession" in navigator) {
+  navigator.mediaSession.setActionHandler("play", () => { if (!State.playing) togglePlay(); });
+  navigator.mediaSession.setActionHandler("pause", () => { if (State.playing) togglePlay(); });
+  navigator.mediaSession.setActionHandler("previoustrack", () => { if (State.index > 0) playIndex(State.index - 1); });
+  navigator.mediaSession.setActionHandler("nexttrack", () => { if (State.index < State.segments.length - 1) playIndex(State.index + 1); });
+}
+
+/* ============ PWA：service worker + 安裝 ============ */
+(function setupPWA() {
+  if ("serviceWorker" in navigator && location.protocol === "https:") {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  }
+
+  let deferred = null;
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault(); deferred = e; $("#installBtn").hidden = false;
+  });
+  $("#installBtn").addEventListener("click", async () => {
+    if (!deferred) { toast("此瀏覽器用選單的「加到主畫面」即可安裝"); return; }
+    deferred.prompt(); await deferred.userChoice; deferred = null; $("#installBtn").hidden = true;
+  });
+})();
+
+/* ============ 啟動 ============ */
+loadSettings();
+$("#speedVal").textContent = parseFloat($("#speed").value).toFixed(2) + "×";
+$("#segLenVal").textContent = $("#segLen").value;
+$("#openaiFields").hidden = $("#provider").value !== "openai";
+$("#browserFields").hidden = $("#provider").value !== "browser";
+$("#instructionsField").style.display = $("#model").value === "gpt-4o-mini-tts" ? "" : "none";
+updateUI();
+renderLibrary();
+</script>
+</body>
+</html>
