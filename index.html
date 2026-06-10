@@ -1454,7 +1454,13 @@ const State = {
   marks: [],             // 當前文件的重點（marks store 的快取副本）
   lastBoundary: 0,       // 瀏覽器 TTS 的 onboundary charIndex（標記定位用）
   rate: 1,               // 播放列快速調速（playbackRate 倍率，不重新合成、不進快取 key）
+  srcIndex: -1,          // audio.src 目前載的是哪一段（續播守門用，防播到舊段）
 };
+
+// 續播守門：audio 裡的音檔必須真的屬於當前段才能直接 resume，否則要重新取段
+function canResumeSrc(src, srcIndex, index) {
+  return !!src && index >= 0 && srcIndex === index;
+}
 
 // 快速調速一格：0.25 一步，0.5–3.0 封頂，修整浮點誤差
 function stepRate(cur, dir) {
@@ -1628,6 +1634,7 @@ async function playIndex(i) {
     const url = await getSegmentUrl(i);
     if (State.index !== i || !State.playing) return; // 期間被切換
     State.audio.src = url;
+    State.srcIndex = i;
     // Gemini API 沒有語速參數，改在播放端調（瀏覽器預設保持音高）；其他引擎已在合成端處理
     // 快速調速（State.rate）一律疊在播放端，換速不重新合成、不另收費
     State.audio.playbackRate = State.rate * (cfg.provider === "gemini" ? cfg.speed : 1);
@@ -1702,8 +1709,8 @@ function togglePlay() {
       else speakBrowser(State.segments[State.index]);
       setStatus("playing", "朗讀中");
     } else {
-      if (State.audio.src) { State.audio.play(); setStatus("playing", "播放中"); }
-      else playIndex(State.index);
+      if (canResumeSrc(State.audio.src, State.srcIndex, State.index)) { State.audio.play(); setStatus("playing", "播放中"); }
+      else playIndex(State.index); // src 是舊段（合成中被暫停／換書／合成失敗）→ 重新取對的段
     }
     updateUI();
   }
@@ -2101,6 +2108,10 @@ async function loadText(raw, title, plain) {
   // 釋放舊的 blob url
   State.blobUrls.forEach(u => URL.revokeObjectURL(u));
   State.blobUrls.clear();
+  // 清掉 audio 裡殘留的舊書音檔（revoke 不會卸載已載入的媒體，留著會被續播分支播出來）
+  State.srcIndex = -1;
+  State.audio.removeAttribute("src");
+  try { State.audio.load(); } catch (e) {}
   State.doneSet.clear();
   State.prefetching.clear();
   State.index = -1;
