@@ -285,6 +285,29 @@
         </select>
       </div>
 
+      <div class="field-row">
+        <div class="field">
+          <label>語系</label>
+          <select id="lang">
+            <option value="auto">自動偵測</option>
+            <option value="zh-TW">中文（台灣）</option>
+            <option value="zh">中文（通用）</option>
+            <option value="en">英文</option>
+            <option value="ja">日文</option>
+            <option value="ko">韓文</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>聲色</label>
+          <select id="gender">
+            <option value="any">不指定</option>
+            <option value="f">女聲</option>
+            <option value="m">男聲</option>
+          </select>
+        </div>
+      </div>
+      <div class="hint">語系與聲色會篩選下面的音色清單。OpenAI 引擎的語系口音靠語氣指示實現（僅 gpt-4o-mini-tts 支援）；瀏覽器引擎則直接篩系統語音。</div>
+
       <div id="openaiFields">
         <div class="field">
           <label>OpenAI API Key（只存在這支手機本地，不會上傳）</label>
@@ -302,16 +325,7 @@
           </div>
           <div class="field">
             <label>音色</label>
-            <select id="voice">
-              <option value="alloy">alloy（中性）</option>
-              <option value="nova">nova（明亮女聲）</option>
-              <option value="shimmer">shimmer（柔和女聲）</option>
-              <option value="echo">echo（沉穩男聲）</option>
-              <option value="onyx">onyx（低沉男聲）</option>
-              <option value="fable">fable（敘事感）</option>
-              <option value="sage">sage（溫和）</option>
-              <option value="coral">coral（活潑）</option>
-            </select>
+            <select id="voice"></select>
           </div>
         </div>
         <div class="field" id="instructionsField">
@@ -404,7 +418,7 @@ async function sha1(str) {
 }
 
 /* ============ 設定持久化 ============ */
-const SKEYS = ["provider","apiKey","model","voice","instructions","speed","segLen","skipCode","useCache","browserVoice"];
+const SKEYS = ["provider","lang","gender","apiKey","model","voice","instructions","speed","segLen","skipCode","useCache","browserVoice"];
 function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem("shuoshu.settings") || "{}");
@@ -589,11 +603,71 @@ function guessTitle(raw) {
   return (line || "未命名文件").slice(0, 40);
 }
 
+/* ============ 語系／聲色 ============ */
+const OPENAI_VOICES = [
+  { id: "alloy",   label: "alloy（中性）",       g: "n" },
+  { id: "nova",    label: "nova（明亮女聲）",    g: "f" },
+  { id: "shimmer", label: "shimmer（柔和女聲）", g: "f" },
+  { id: "coral",   label: "coral（活潑女聲）",   g: "f" },
+  { id: "sage",    label: "sage（溫和女聲）",    g: "f" },
+  { id: "echo",    label: "echo（沉穩男聲）",    g: "m" },
+  { id: "onyx",    label: "onyx（低沉男聲）",    g: "m" },
+  { id: "fable",   label: "fable（敘事感）",     g: "n" },
+];
+const LANG_PATTERNS = {
+  "zh-TW": /zh[-_]?(TW|Hant)|cmn[-_]?Hant/i,
+  zh: /^zh|^cmn/i,
+  en: /^en/i,
+  ja: /^ja/i,
+  ko: /^ko/i,
+};
+// OpenAI TTS 沒有語言參數，靠 gpt-4o-mini-tts 的 instructions 控口音
+const LANG_TTS_INSTRUCTIONS = {
+  "zh-TW": "請用台灣口音的中文自然朗讀。",
+  zh: "請用標準中文自然朗讀。",
+  en: "Read aloud in natural English.",
+  ja: "自然な日本語で読み上げてください。",
+  ko: "자연스러운 한국어로 읽어주세요.",
+};
+function effectiveInstructions(cfg) {
+  if (cfg.model !== "gpt-4o-mini-tts") return "";
+  const parts = [];
+  if (LANG_TTS_INSTRUCTIONS[cfg.lang]) parts.push(LANG_TTS_INSTRUCTIONS[cfg.lang]);
+  if (cfg.instructions) parts.push(cfg.instructions);
+  return parts.join(" ");
+}
+
+// 依聲色重建 OpenAI 音色清單（中性音色只在「不指定」時出現）
+function filterOpenAIVoices() {
+  const g = $("#gender").value;
+  const sel = $("#voice");
+  const keep = sel.value;
+  const list = OPENAI_VOICES.filter(v => g === "any" || v.g === g);
+  sel.innerHTML = "";
+  list.forEach(v => {
+    const o = document.createElement("option");
+    o.value = v.id; o.textContent = v.label;
+    sel.appendChild(o);
+  });
+  sel.value = list.some(v => v.id === keep) ? keep : list[0].id;
+}
+
+// Web Speech API 不給性別，只能從常見語音名稱猜；猜不到的在「不指定」時照常顯示
+const FEMALE_HINTS = /female|woman|女|hanhan|yating|hsiao|xiao(xiao|yi|chen|yu|mo|han)|mei.?jia|tingting|huihui|yaoyao|samantha|karen|moira|tessa|allison|ava|susan|zira|aria|jenny|kyoko|haruka|nanami|sun.?hi|heami/i;
+const MALE_HINTS = /\bmale\b|男|yun(jhe|xi|yang|jian|ze)|kangkang|danny|daniel|alex|fred|aaron|\bguy\b|david|mark|liang|ichiro|keita|otoya|injoon/i;
+function guessGender(v) {
+  const s = (v.name || "") + " " + (v.voiceURI || "");
+  if (FEMALE_HINTS.test(s)) return "f";
+  if (MALE_HINTS.test(s)) return "m";
+  return "";
+}
+
 /* ============ OpenAI TTS 合成 ============ */
 async function synthOpenAI(text, cfg) {
   const body = { model: cfg.model, input: text, voice: cfg.voice, response_format: "mp3" };
   if (cfg.model.startsWith("tts-1")) body.speed = cfg.speed;            // 只有 tts-1 系列支援 speed
-  if (cfg.model === "gpt-4o-mini-tts" && cfg.instructions) body.instructions = cfg.instructions;
+  const eff = effectiveInstructions(cfg);
+  if (eff) body.instructions = eff;
   const resp = await fetch("https://api.openai.com/v1/audio/speech", {
     method: "POST",
     headers: { "Authorization": "Bearer " + cfg.apiKey, "Content-Type": "application/json" },
@@ -635,6 +709,7 @@ async function saveProgress() {
 function cfgNow() {
   return {
     provider: $("#provider").value,
+    lang: $("#lang").value,
     apiKey: $("#apiKey").value.trim(),
     model: $("#model").value,
     voice: $("#voice").value,
@@ -646,7 +721,7 @@ function cfgNow() {
 }
 
 async function segCacheKey(text, cfg) {
-  return "v1|" + cfg.model + "|" + cfg.voice + "|" + cfg.speed + "|" + (cfg.instructions || "") + "|" + await sha1(text);
+  return "v1|" + cfg.model + "|" + cfg.voice + "|" + cfg.speed + "|" + effectiveInstructions(cfg) + "|" + await sha1(text);
 }
 
 // 取得某段的可播放 URL（含快取與預抓去重）
@@ -741,8 +816,11 @@ function speakBrowser(text) {
   const cfg = cfgNow();
   u.rate = cfg.speed;
   const voices = speechSynthesis.getVoices();
-  const v = voices.find(v => v.name === cfg.browserVoice) || voices.find(v => /zh|cmn|Chinese|中文/i.test(v.lang + v.name));
-  if (v) u.voice = v;
+  const langPat = LANG_PATTERNS[cfg.lang];
+  const v = voices.find(v => v.name === cfg.browserVoice)
+    || (langPat && voices.find(v => langPat.test(v.lang) || langPat.test(v.name)))
+    || voices.find(v => /zh|cmn|Chinese|中文/i.test(v.lang + v.name));
+  if (v) { u.voice = v; u.lang = v.lang; }
   u.onend = () => { if (State.playing) onSegmentEnded(); };
   u.onerror = () => { if (State.playing) onSegmentEnded(); };
   State.curUtter = u;
@@ -980,12 +1058,31 @@ $("#model").addEventListener("change", () => {
   $("#instructionsField").style.display = $("#model").value === "gpt-4o-mini-tts" ? "" : "none";
 });
 $("#clearCacheBtn").addEventListener("click", async () => { await cacheClear(); toast("已清空語音快取"); });
+$("#gender").addEventListener("change", () => { filterOpenAIVoices(); loadBrowserVoices(); saveSettings(); });
+$("#lang").addEventListener("change", () => { loadBrowserVoices(); saveSettings(); });
 
-// 瀏覽器語音清單
+// 瀏覽器語音清單（依語系＋聲色篩選）
 function loadBrowserVoices() {
   const sel = $("#browserVoice");
-  const voices = speechSynthesis.getVoices();
-  const saved = (JSON.parse(localStorage.getItem("shuoshu.settings") || "{}")).browserVoice;
+  const all = speechSynthesis.getVoices();
+  const saved = sel.value || (JSON.parse(localStorage.getItem("shuoshu.settings") || "{}")).browserVoice;
+
+  const langPat = LANG_PATTERNS[$("#lang").value];
+  let voices = langPat ? all.filter(v => langPat.test(v.lang) || langPat.test(v.name)) : all.slice();
+  if (!voices.length) voices = all.slice(); // 此語系沒有系統語音就退回全列
+
+  const g = $("#gender").value;
+  if (g !== "any") {
+    const byG = voices.filter(v => guessGender(v) === g);
+    if (byG.length) voices = byG; // 猜不出任何性別就維持原列，不變成空清單
+  }
+
+  // 自動模式中文優先排前面
+  if (!langPat) {
+    const isZh = (v) => /zh|cmn|Chinese|中文/i.test(v.lang + v.name) ? 1 : 0;
+    voices.sort((a, b) => isZh(b) - isZh(a));
+  }
+
   sel.innerHTML = "";
   voices.forEach(v => {
     const o = document.createElement("option");
@@ -993,9 +1090,6 @@ function loadBrowserVoices() {
     if (v.name === saved) o.selected = true;
     sel.appendChild(o);
   });
-  // 中文優先排前面
-  const zh = voices.filter(v => /zh|cmn|Chinese|中文/i.test(v.lang + v.name));
-  if (zh.length && !saved) sel.value = zh[0].name;
 }
 if ("speechSynthesis" in window) {
   loadBrowserVoices();
@@ -1027,7 +1121,10 @@ if ("mediaSession" in navigator) {
 })();
 
 /* ============ 啟動 ============ */
+filterOpenAIVoices();   // 先建滿音色清單，loadSettings 才能還原已存的 voice
 loadSettings();
+filterOpenAIVoices();   // 再依還原後的聲色重篩
+if ("speechSynthesis" in window) loadBrowserVoices();
 $("#speedVal").textContent = parseFloat($("#speed").value).toFixed(2) + "×";
 $("#segLenVal").textContent = $("#segLen").value;
 $("#openaiFields").hidden = $("#provider").value !== "openai";
