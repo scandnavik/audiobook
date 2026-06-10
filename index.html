@@ -232,7 +232,7 @@
   </svg>
   <div>
     <h1>說書機</h1>
-    <div class="sub">Markdown 朗讀 · 雲端高音質</div>
+    <div class="sub">EPUB / Markdown 朗讀 · 雲端高音質</div>
   </div>
   <div class="spacer"></div>
   <button class="icon-btn" id="installBtn" title="加到主畫面" hidden>
@@ -251,8 +251,8 @@
   <div class="panel active" data-panel="file">
     <div class="dropzone" id="dropzone">
       <strong>點此選檔，或拖曳檔案進來</strong>
-      <small>支援 .md / .markdown / .txt</small>
-      <input type="file" id="fileInput" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden />
+      <small>支援 .epub（建議，書籍首選）/ .md / .txt</small>
+      <input type="file" id="fileInput" accept=".epub,application/epub+zip,.md,.markdown,.txt,text/markdown,text/plain" hidden />
     </div>
   </div>
 
@@ -375,7 +375,7 @@
     <span id="segChars">0 字</span>
   </div>
   <div class="seg-list" id="segList"></div>
-  <div class="empty" id="emptyState">載入一份 Markdown，就能開始聽。</div>
+  <div class="empty" id="emptyState">載入一本 EPUB 或一份 Markdown，就能開始聽。</div>
 </main>
 
 <!-- 播放控制列 -->
@@ -519,6 +519,118 @@ function splitIntoSegments(text, maxLen) {
   }
   if (chunk) out.push(chunk);
   return out;
+}
+
+/* ============ EPUB 解析（瀏覽器原生，零依賴）============ */
+// ZIP central directory 解析；解壓用 DecompressionStream('deflate-raw')
+function zipEntries(buf) {
+  const dv = new DataView(buf);
+  const u8 = new Uint8Array(buf);
+  let eocd = -1;
+  for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 22 - 65535); i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error("不是有效的 EPUB（找不到 ZIP 目錄）");
+  const count = dv.getUint16(eocd + 10, true);
+  let off = dv.getUint32(eocd + 16, true);
+  const entries = new Map();
+  for (let n = 0; n < count; n++) {
+    if (dv.getUint32(off, true) !== 0x02014b50) break;
+    const method = dv.getUint16(off + 10, true);
+    const csize = dv.getUint32(off + 20, true);
+    const nameLen = dv.getUint16(off + 28, true);
+    const extraLen = dv.getUint16(off + 30, true);
+    const cmtLen = dv.getUint16(off + 32, true);
+    const lho = dv.getUint32(off + 42, true);
+    const name = new TextDecoder().decode(u8.subarray(off + 46, off + 46 + nameLen));
+    entries.set(name, { method, csize, lho });
+    off += 46 + nameLen + extraLen + cmtLen;
+  }
+  return entries;
+}
+async function zipExtract(buf, e) {
+  const dv = new DataView(buf);
+  const nameLen = dv.getUint16(e.lho + 26, true);
+  const extraLen = dv.getUint16(e.lho + 28, true);
+  const start = e.lho + 30 + nameLen + extraLen;
+  const data = new Uint8Array(buf, start, e.csize);
+  if (e.method === 0) return data;
+  if (e.method === 8) {
+    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  throw new Error("不支援的 ZIP 壓縮方式: " + e.method);
+}
+
+// XHTML → 朗讀用純文字：只取葉節點區塊，標題補句號，表格／圖／註腳剝掉
+function htmlToPlainText(html) {
+  const d = new DOMParser().parseFromString(html, "text/html");
+  if (!d.body) return "";
+  d.body.querySelectorAll("script,style,nav,aside,figure,table,sup").forEach(n => n.remove());
+  const out = [];
+  const blocks = d.body.querySelectorAll("h1,h2,h3,h4,h5,h6,p,blockquote,li,div,td");
+  for (const el of blocks) {
+    if (el.querySelector("h1,h2,h3,h4,h5,h6,p,blockquote,li,div")) continue;
+    let t = el.textContent.replace(/\s+/g, " ").trim();
+    if (!t) continue;
+    if (/^H[1-6]$/.test(el.tagName)) t = t.replace(/[。.!?！？]$/, "") + "。";
+    out.push(t);
+  }
+  if (!out.length) {
+    const t = d.body.textContent.replace(/\s+/g, " ").trim();
+    if (t) out.push(t);
+  }
+  return out.join("\n\n");
+}
+
+async function parseEpub(buf) {
+  if (!("DecompressionStream" in window)) throw new Error("此瀏覽器不支援解壓（請更新到較新版本）");
+  const entries = zipEntries(buf);
+  const getText = async (name) => {
+    const e = entries.get(name);
+    return e ? new TextDecoder().decode(await zipExtract(buf, e)) : null;
+  };
+  const container = await getText("META-INF/container.xml");
+  if (!container) throw new Error("EPUB 缺少 container.xml");
+  const opfPath = (container.match(/full-path="([^"]+)"/) || [])[1];
+  const opfXml = opfPath && await getText(opfPath);
+  if (!opfXml) throw new Error("EPUB 缺少 OPF 描述檔");
+  const opfDir = opfPath.includes("/") ? opfPath.slice(0, opfPath.lastIndexOf("/") + 1) : "";
+  const opf = new DOMParser().parseFromString(opfXml, "application/xml");
+
+  let title = "";
+  const tEl = opf.getElementsByTagNameNS("*", "title")[0];
+  if (tEl) title = tEl.textContent.trim();
+
+  const manifest = {};
+  for (const it of opf.querySelectorAll("manifest > item")) {
+    manifest[it.getAttribute("id")] = it.getAttribute("href");
+  }
+  const hrefs = [...opf.querySelectorAll("spine > itemref")]
+    .map(ir => manifest[ir.getAttribute("idref")])
+    .filter(Boolean);
+  if (!hrefs.length) throw new Error("EPUB spine 是空的");
+
+  // 路徑正規化（處理 ../ 與 URL 編碼）
+  const normalize = (p) => {
+    const parts = [];
+    for (const seg of decodeURIComponent(p).split("/")) {
+      if (seg === "..") parts.pop();
+      else if (seg !== "." && seg) parts.push(seg);
+    }
+    return parts.join("/");
+  };
+
+  const parts = [];
+  for (const href of hrefs) {
+    const html = await getText(normalize(opfDir + href.replace(/#.*$/, "")));
+    if (html) {
+      const t = htmlToPlainText(html);
+      if (t) parts.push(t);
+    }
+  }
+  if (!parts.length) throw new Error("EPUB 裡找不到可朗讀的文字");
+  return { title, text: parts.join("\n\n") };
 }
 
 /* ============ 語音快取＋書庫（IndexedDB）============ */
@@ -914,7 +1026,7 @@ function renderSegments() {
   $("#emptyState").hidden = State.segments.length > 0;
 }
 
-async function loadText(raw, title) {
+async function loadText(raw, title, plain) {
   if (!raw || !raw.trim()) { toast("沒有內容可載入", true); return; }
   stopAll();
   // 釋放舊的 blob url
@@ -925,7 +1037,8 @@ async function loadText(raw, title) {
   State.index = -1;
   State.docId = null;
 
-  const clean = cleanMarkdown(raw, $("#skipCode").checked);
+  // EPUB 已抽成純文字，不再過 markdown 清理
+  const clean = plain ? raw.replace(/\n{3,}/g, "\n\n").trim() : cleanMarkdown(raw, $("#skipCode").checked);
   const maxLen = parseInt($("#segLen").value, 10);
   State.segments = splitIntoSegments(clean, maxLen);
   renderSegments();
@@ -938,6 +1051,7 @@ async function loadText(raw, title) {
     const old = await docsGet(id);
     const doc = old || { id, raw, title: title || guessTitle(raw), createdAt: Date.now(), lastIndex: -1 };
     if (title) doc.title = title;
+    doc.plain = !!plain;
     doc.segLen = maxLen;
     doc.total = State.segments.length;
     doc.updatedAt = Date.now();
@@ -998,11 +1112,40 @@ async function openDoc(d) {
     $("#segLenVal").textContent = d.segLen;
   }
   lastRaw = d.raw;
-  await loadText(d.raw, d.title);
+  lastPlain = !!d.plain;
+  await loadText(d.raw, d.title, d.plain);
 }
 
 /* ============ UI 綁定 ============ */
 let lastRaw = "";
+let lastPlain = false;
+
+// 統一選檔／拖曳入口：EPUB 走解析、md／txt 走原路
+function handleFile(f) {
+  const isEpub = /\.epub$/i.test(f.name) || f.type === "application/epub+zip";
+  const r = new FileReader();
+  if (isEpub) {
+    r.onload = async () => {
+      try {
+        toast("解析 EPUB 中……");
+        const { title, text } = await parseEpub(r.result);
+        lastRaw = text; lastPlain = true;
+        $("#dropzone").querySelector("strong").textContent = f.name;
+        await loadText(text, title || f.name.replace(/\.epub$/i, ""), true);
+      } catch (e) {
+        toast("EPUB 解析失敗：" + (e.message || e), true);
+      }
+    };
+    r.readAsArrayBuffer(f);
+  } else {
+    r.onload = () => {
+      lastRaw = r.result; lastPlain = false;
+      $("#dropzone").querySelector("strong").textContent = f.name;
+      loadText(lastRaw, f.name);
+    };
+    r.readAsText(f);
+  }
+}
 
 // 分頁切換
 $$(".tab").forEach(tab => tab.addEventListener("click", () => {
@@ -1016,30 +1159,20 @@ $$(".tab").forEach(tab => tab.addEventListener("click", () => {
 $("#dropzone").addEventListener("click", () => $("#fileInput").click());
 $("#fileInput").addEventListener("change", (e) => {
   const f = e.target.files[0];
-  if (!f) return;
-  const r = new FileReader();
-  r.onload = () => {
-    lastRaw = r.result;
-    $("#dropzone").querySelector("strong").textContent = f.name;
-    loadText(lastRaw, f.name);
-  };
-  r.readAsText(f);
+  if (f) handleFile(f);
 });
 // 拖曳
 ["dragover", "dragenter"].forEach(ev => $("#dropzone").addEventListener(ev, e => { e.preventDefault(); $("#dropzone").classList.add("drag"); }));
 ["dragleave", "drop"].forEach(ev => $("#dropzone").addEventListener(ev, e => { e.preventDefault(); $("#dropzone").classList.remove("drag"); }));
 $("#dropzone").addEventListener("drop", (e) => {
   const f = e.dataTransfer.files[0];
-  if (!f) return;
-  const r = new FileReader();
-  r.onload = () => { lastRaw = r.result; $("#dropzone").querySelector("strong").textContent = f.name; loadText(lastRaw, f.name); };
-  r.readAsText(f);
+  if (f) handleFile(f);
 });
 
 $("#loadBtn").addEventListener("click", () => {
   const active = $(".tab.active").dataset.tab;
-  if (active === "paste") { lastRaw = $("#pasteArea").value; }
-  loadText(lastRaw);
+  if (active === "paste") { lastRaw = $("#pasteArea").value; lastPlain = false; }
+  loadText(lastRaw, undefined, lastPlain);
 });
 $("#clearBtn").addEventListener("click", () => {
   stopAll();

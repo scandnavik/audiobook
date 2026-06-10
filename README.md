@@ -1,12 +1,13 @@
 # 說書機 md-audio
 
-把 Markdown／純文字檔用文字轉語音（TTS）唸出來的單檔 PWA——一台吃 `.md` 的有聲書播放器。
+把 EPUB／Markdown／純文字用文字轉語音（TTS）唸出來的單檔 PWA——有聲書播放器。書籍首選 `.epub`（內建解析，零依賴），`.md`／`.txt` 備選。
 
 **線上版**：https://scandnavik.github.io/md-audio/
 
 ## 特色
 
 - **單檔零依賴**：核心就是一個 `index.html`，無後端、無框架、無建置流程
+- **內建 EPUB 解析**：瀏覽器原生 `DecompressionStream` 解 ZIP＋DOMParser 抽正文（依 spine 順序、標題補停頓、剝表格／註腳），不引入任何函式庫
 - **BYOK（Bring Your Own Key）**：OpenAI API key 只存在你瀏覽器的 localStorage，播放時由你的瀏覽器直連 OpenAI，不經過任何中間伺服器；本 repo 不含任何金鑰
 - **免費試用路徑**：沒有 key 也能用瀏覽器內建語音（Web Speech API）
 - **語音快取**：合成過的段落存 IndexedDB，重播／重開不重複收費
