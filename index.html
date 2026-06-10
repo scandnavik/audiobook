@@ -369,6 +369,12 @@
     </div>
   </details>
 
+  <!-- 章節導覽 -->
+  <div class="field" id="chapterNav" hidden style="margin:18px 0 0">
+    <label>章節（點選跳播）</label>
+    <select id="chapterSel"></select>
+  </div>
+
   <!-- 段落 -->
   <div class="seg-meta" id="segMeta" hidden>
     <span id="segCount">0 段</span>
@@ -402,6 +408,7 @@
 "use strict";
 
 /* ============ 小工具 ============ */
+const CHAP_MARK = "\u0001"; // 章節哨兵：切段時當硬邊界
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
 function toast(msg, isErr) {
@@ -458,8 +465,8 @@ function cleanMarkdown(md, skipCode) {
   t = t.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
   // 行內程式碼標記
   t = t.replace(/`([^`]+)`/g, "$1");
-  // 標題標記（保留文字，後面補句號讓它停頓）
-  t = t.replace(/^#{1,6}\s+(.*)$/gm, (m, p1) => p1.replace(/[。.!?！？]$/, "") + "。");
+  // 標題標記（保留文字，後面補句號讓它停頓）；h1/h2 前置 CHAP_MARK 當章節哨兵
+  t = t.replace(/^(#{1,6})\s+(.*)$/gm, (m, h, p1) => (h.length <= 2 ? CHAP_MARK : "") + p1.replace(/[。.!?！？]$/, "") + "。");
   // 粗體 / 斜體 / 刪除線
   t = t.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1");
   t = t.replace(/__([^_]+)__/g, "$1").replace(/_([^_]+)_/g, "$1");
@@ -485,40 +492,54 @@ function cleanMarkdown(md, skipCode) {
   return t.trim();
 }
 
-// 把長文切成朗讀段：先依空行分段、超長段依句子拆，最後貪婪打包成接近 maxLen 的連續大塊
-// （一段 = 一次 TTS 請求 = 一個音檔；塊越大接縫越少，朗讀越連貫）
+// 把長文切成朗讀段：章節哨兵（CHAP_MARK）是硬邊界，章內先依空行分段、
+// 超長段依句子拆，最後貪婪打包成接近 maxLen 的連續大塊。
+// 回傳 { segments, chapters: [{title, index}] }；index = 該章第一段的段號。
 function splitIntoSegments(text, maxLen) {
-  const paras = text.split(/\n{2,}/).map(p => p.replace(/\n/g, " ").trim()).filter(Boolean);
+  const segments = [];
+  const chapters = [];
 
-  // 第一步：把超長段落拆成不超過 maxLen 的句級 pieces
-  const pieces = [];
-  for (const p of paras) {
-    if (p.length <= maxLen) { pieces.push(p); continue; }
-    const sentences = p.match(/[^。！？!?\.]+[。！？!?\.]+|[^。！？!?\.]+$/g) || [p];
-    let buf = "";
-    for (const s of sentences) {
-      if ((buf + s).length > maxLen && buf) { pieces.push(buf.trim()); buf = ""; }
-      if (s.length > maxLen) {
-        // 單句仍超長，硬切
-        let rest = s;
-        while (rest.length > maxLen) { pieces.push(rest.slice(0, maxLen).trim()); rest = rest.slice(maxLen); }
-        buf += rest;
-      } else {
-        buf += s;
+  const packBlock = (blockText, title) => {
+    const paras = blockText.split(/\n{2,}/).map(p => p.replace(/\n/g, " ").trim()).filter(Boolean);
+    if (!paras.length) return;
+    if (title) chapters.push({ title, index: segments.length });
+
+    // 第一步：把超長段落拆成不超過 maxLen 的句級 pieces
+    const pieces = [];
+    for (const p of paras) {
+      if (p.length <= maxLen) { pieces.push(p); continue; }
+      const sentences = p.match(/[^。！？!?\.]+[。！？!?\.]+|[^。！？!?\.]+$/g) || [p];
+      let buf = "";
+      for (const s of sentences) {
+        if ((buf + s).length > maxLen && buf) { pieces.push(buf.trim()); buf = ""; }
+        if (s.length > maxLen) {
+          // 單句仍超長，硬切
+          let rest = s;
+          while (rest.length > maxLen) { pieces.push(rest.slice(0, maxLen).trim()); rest = rest.slice(maxLen); }
+          buf += rest;
+        } else {
+          buf += s;
+        }
       }
+      if (buf.trim()) pieces.push(buf.trim());
     }
-    if (buf.trim()) pieces.push(buf.trim());
-  }
 
-  // 第二步：貪婪打包——短段落（含標題）併進同一塊，換行保留給 TTS 當自然停頓
-  const out = [];
-  let chunk = "";
-  for (const piece of pieces) {
-    if (chunk && (chunk.length + piece.length + 1) > maxLen) { out.push(chunk); chunk = piece; }
-    else chunk = chunk ? chunk + "\n" + piece : piece;
+    // 第二步：貪婪打包——短段落（含標題）併進同一塊，換行保留給 TTS 當自然停頓
+    let chunk = "";
+    for (const piece of pieces) {
+      if (chunk && (chunk.length + piece.length + 1) > maxLen) { segments.push(chunk); chunk = piece; }
+      else chunk = chunk ? chunk + "\n" + piece : piece;
+    }
+    if (chunk) segments.push(chunk);
+  };
+
+  const blocks = text.split(CHAP_MARK);
+  packBlock(blocks[0], "");  // 第一個章節哨兵之前的前言
+  for (let b = 1; b < blocks.length; b++) {
+    const title = blocks[b].split("。")[0].replace(/\n[\s\S]*$/, "").trim().slice(0, 60);
+    packBlock(blocks[b], title || ("章節 " + b));
   }
-  if (chunk) out.push(chunk);
-  return out;
+  return { segments, chapters };
 }
 
 /* ============ EPUB 解析（瀏覽器原生，零依賴）============ */
@@ -573,7 +594,10 @@ function htmlToPlainText(html) {
     if (el.querySelector("h1,h2,h3,h4,h5,h6,p,blockquote,li,div")) continue;
     let t = el.textContent.replace(/\s+/g, " ").trim();
     if (!t) continue;
-    if (/^H[1-6]$/.test(el.tagName)) t = t.replace(/[。.!?！？]$/, "") + "。";
+    if (/^H[1-6]$/.test(el.tagName)) {
+      t = t.replace(/[。.!?！？]$/, "") + "。";
+      if (/^H[12]$/.test(el.tagName)) t = CHAP_MARK + t; // 章節哨兵
+    }
     out.push(t);
   }
   if (!out.length) {
@@ -807,6 +831,8 @@ async function synthOpenAI(text, cfg) {
 /* ============ 播放引擎 ============ */
 const State = {
   segments: [],          // string[]
+  chapters: [],          // [{title, index}]，index = 該章第一段的段號
+  docTitle: "",          // 當前文件標題（書庫／鎖屏顯示用）
   index: -1,             // 當前段
   playing: false,
   mode: "audio",         // 'audio'（雲端）| 'speech'（瀏覽器）
@@ -878,16 +904,51 @@ function setStatus(kind, text) {
   $("#statusText").textContent = text;
 }
 
+// 目前播到哪一章（回傳 chapters 裡最後一個 index <= State.index 的）
+function currentChapter() {
+  let cur = null;
+  for (const c of State.chapters) {
+    if (c.index <= State.index) cur = c;
+    else break;
+  }
+  return cur;
+}
+
+function renderChapters() {
+  const sel = $("#chapterSel");
+  $("#chapterNav").hidden = State.chapters.length === 0;
+  sel.innerHTML = "";
+  State.chapters.forEach((c, k) => {
+    const o = document.createElement("option");
+    o.value = c.index;
+    o.textContent = `${k + 1}. ${c.title}`;
+    sel.appendChild(o);
+  });
+}
+
 function updateUI() {
   $("#player").classList.toggle("show", State.segments.length > 0);
   $$(".seg").forEach((el, i) => {
     el.classList.toggle("cur", i === State.index);
     el.classList.toggle("done", State.doneSet.has(i));
   });
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
   const cur = State.index >= 0 ? State.segments[State.index] : "";
+  const ch = currentChapter();
   $("#nowText").innerHTML = State.segments.length
-    ? `<b>第 ${State.index + 1} / ${State.segments.length} 段</b> · ${cur.slice(0, 40)}${cur.length > 40 ? "…" : ""}`
+    ? `<b>第 ${State.index + 1} / ${State.segments.length} 段</b>${ch ? ` · <b>${esc(ch.title)}</b>` : ""} · ${esc(cur.slice(0, 40))}${cur.length > 40 ? "…" : ""}`
     : "準備中……";
+  if (ch) $("#chapterSel").value = String(ch.index);
+  // 鎖屏顯示書名＋章節
+  if ("mediaSession" in navigator && State.segments.length) {
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: ch ? ch.title : (State.docTitle || "說書機"),
+        artist: State.docTitle || "說書機",
+        album: "說書機",
+      });
+    } catch (e) {}
+  }
   const pct = State.segments.length ? ((State.index + (State.playing ? 0.5 : 0)) / State.segments.length) * 100 : 0;
   $("#progressBar").style.width = Math.min(100, pct) + "%";
   $("#playIcon").innerHTML = State.playing
@@ -1040,8 +1101,11 @@ async function loadText(raw, title, plain) {
   // EPUB 已抽成純文字，不再過 markdown 清理
   const clean = plain ? raw.replace(/\n{3,}/g, "\n\n").trim() : cleanMarkdown(raw, $("#skipCode").checked);
   const maxLen = parseInt($("#segLen").value, 10);
-  State.segments = splitIntoSegments(clean, maxLen);
+  const split = splitIntoSegments(clean, maxLen);
+  State.segments = split.segments;
+  State.chapters = split.chapters;
   renderSegments();
+  renderChapters();
 
   // 登錄書庫＋撈續聽進度
   let resumeAt = -1;
@@ -1051,6 +1115,7 @@ async function loadText(raw, title, plain) {
     const old = await docsGet(id);
     const doc = old || { id, raw, title: title || guessTitle(raw), createdAt: Date.now(), lastIndex: -1 };
     if (title) doc.title = title;
+    State.docTitle = doc.title;
     doc.plain = !!plain;
     doc.segLen = maxLen;
     doc.total = State.segments.length;
@@ -1083,7 +1148,8 @@ async function renderLibrary() {
     const div = document.createElement("div");
     div.className = "lib-item";
     const heard = Math.min((d.lastIndex ?? -1) + 1, d.total || 0);
-    const prog = d.total ? (heard >= d.total ? "已聽完" : `聽到 ${heard} / ${d.total} 段`) : "";
+    const pct = d.total ? Math.round(heard / d.total * 100) : 0;
+    const prog = d.total ? (heard >= d.total ? "已聽完" : `聽到 ${heard} / ${d.total} 段（${pct}%）`) : "";
     const date = d.updatedAt ? new Date(d.updatedAt).toLocaleDateString("zh-TW") : "";
     div.innerHTML = `
       <div class="lib-main">
@@ -1174,9 +1240,14 @@ $("#loadBtn").addEventListener("click", () => {
   if (active === "paste") { lastRaw = $("#pasteArea").value; lastPlain = false; }
   loadText(lastRaw, undefined, lastPlain);
 });
+$("#chapterSel").addEventListener("change", () => {
+  const i = parseInt($("#chapterSel").value, 10);
+  if (!isNaN(i)) playIndex(i);
+});
 $("#clearBtn").addEventListener("click", () => {
   stopAll();
-  State.segments = []; State.index = -1; lastRaw = "";
+  State.segments = []; State.chapters = []; State.docTitle = ""; State.docId = null; State.index = -1; lastRaw = "";
+  renderChapters();
   $("#pasteArea").value = "";
   $("#dropzone").querySelector("strong").textContent = "點此選檔，或拖曳檔案進來";
   renderSegments(); updateUI();
