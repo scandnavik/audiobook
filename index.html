@@ -1870,7 +1870,8 @@ async function runExport() {
   if (Exporter.running) return;
   const cfg = cfgNow();
   const ranges = chapterRanges();
-  const totalSegs = State.segments.length;
+  const segs = State.segments.slice(); // 快照：匯出期間切換文件不污染在途佇列
+  const totalSegs = segs.length;
   Exporter.running = true;
   Exporter.cancel = false;
   $("#exportGoBtn").hidden = true;
@@ -1885,7 +1886,7 @@ async function runExport() {
         while (next < r.to) {
           if (Exporter.cancel) throw new Error("已取消");
           const i = next++;
-          blobs[i - r.from] = await synthBlobRetry(State.segments[i], cfg);
+          blobs[i - r.from] = await synthBlobRetry(segs[i], cfg);
           done++;
           $("#exportStatus").textContent = `第 ${done} / ${totalSegs} 段 · ${r.title}`;
           $("#exportProgBar").style.width = (done / totalSegs * 100) + "%";
@@ -2047,6 +2048,7 @@ $("#markBtn").addEventListener("click", markCurrent);
 
 async function loadText(raw, title, plain) {
   if (!raw || !raw.trim()) { toast("沒有內容可載入", true); return; }
+  if (Exporter.running) { toast("匯出進行中，請先取消或等它完成再載入新文件", true); return; }
   stopAll();
   // 釋放舊的 blob url
   State.blobUrls.forEach(u => URL.revokeObjectURL(u));
@@ -2216,11 +2218,12 @@ $("#chapterSel").addEventListener("change", () => {
 });
 $("#clearBtn").addEventListener("click", () => {
   stopAll();
-  State.segments = []; State.chapters = []; State.docTitle = ""; State.docId = null; State.index = -1; lastRaw = "";
+  State.segments = []; State.chapters = []; State.docTitle = ""; State.docId = null; State.marks = []; State.index = -1; lastRaw = "";
   renderChapters();
   $("#pasteArea").value = "";
   $("#dropzone").querySelector("strong").textContent = "點此選檔，或拖曳檔案進來";
   renderSegments(); updateUI();
+  renderMarksPanel();
 });
 
 // 播放控制
