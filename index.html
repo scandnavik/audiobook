@@ -290,6 +290,7 @@
   .modal {
     background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius);
     max-width: 480px; width: 100%; max-height: 80vh; overflow-y: auto; padding: 18px;
+    overscroll-behavior: contain; -webkit-overflow-scrolling: touch; /* 手機上自己捲，不把捲動鏈到背景 */
   }
   .modal h3 { margin: 0 0 10px; font-size: 16px; }
   .modal .quote {
@@ -366,7 +367,55 @@
     <button class="btn btn-ghost" id="clearBtn">清空</button>
   </div>
 
-  <!-- 設定（覆蓋式抽屜，頂欄齒輪鈕開啟） -->
+  <!-- 章節導覽 -->
+  <div class="field" id="chapterNav" hidden style="margin:18px 0 0">
+    <label>章節（點選跳播）</label>
+    <select id="chapterSel"></select>
+  </div>
+
+  <!-- 段落 -->
+  <div class="seg-meta" id="segMeta" hidden>
+    <span id="segCount">0 段</span>
+    <button class="btn btn-ghost" id="exportBtn" style="min-height:36px;padding:0 14px;font-size:13px">匯出音檔</button>
+    <span id="segChars">0 字</span>
+  </div>
+  <div class="hint" id="markHint" hidden style="margin:0 4px 10px;line-height:1.7">
+    畫重點兩條路：播放中按底部的「標記」鈕，記住現在唸到的句子；或直接在下面的段落文字上拖選一段，點跳出來的「標重點」。標過的重點點一下可以寫筆記。
+  </div>
+  <div class="seg-list" id="segList"></div>
+  <div class="empty" id="emptyState">載入一本 EPUB 或一份 Markdown，就能開始聽。</div>
+</main>
+
+<!-- 播放控制列 -->
+<div class="player" id="player">
+  <div class="progress"><i id="progressBar"></i></div>
+  <div class="now-row">
+    <div class="now" id="nowText">準備中……</div>
+    <span id="rateVal" title="播放速度（點一下回 1.0×）">1.0×</span>
+    <span class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">待機</span></span>
+  </div>
+  <div class="controls">
+    <button class="btn btn-ghost" id="markBtn" title="標記現在唸到的句子"
+            style="min-height:40px;padding:0 12px;font-size:13px;gap:5px;border:1px solid var(--line)">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 4h12v17l-6-4-6 4z"/></svg>標記
+    </button>
+    <button class="icon-btn rate-btn" id="rateDownBtn" title="減速">－</button>
+    <button class="icon-btn" id="prevBtn" title="上一段">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14l-11-7z"/></svg>
+    </button>
+    <button class="icon-btn play" id="playBtn" title="播放/暫停">
+      <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <button class="icon-btn" id="nextBtn" title="下一段">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5l11 7-11 7z"/></svg>
+    </button>
+    <button class="icon-btn rate-btn" id="rateUpBtn" title="加速">＋</button>
+  </div>
+</div>
+
+<button class="btn btn-primary" id="selMarkBtn" hidden>標重點</button>
+
+<!-- 設定（覆蓋式抽屜，頂欄齒輪鈕開啟） -->
   <div class="modal-back" id="settingsBack" hidden>
     <div class="modal">
     <h3>語音設定</h3>
@@ -482,53 +531,6 @@
     </div>
   </div>
 
-  <!-- 章節導覽 -->
-  <div class="field" id="chapterNav" hidden style="margin:18px 0 0">
-    <label>章節（點選跳播）</label>
-    <select id="chapterSel"></select>
-  </div>
-
-  <!-- 段落 -->
-  <div class="seg-meta" id="segMeta" hidden>
-    <span id="segCount">0 段</span>
-    <button class="btn btn-ghost" id="exportBtn" style="min-height:36px;padding:0 14px;font-size:13px">匯出音檔</button>
-    <span id="segChars">0 字</span>
-  </div>
-  <div class="hint" id="markHint" hidden style="margin:0 4px 10px;line-height:1.7">
-    畫重點兩條路：播放中按底部的「標記」鈕，記住現在唸到的句子；或直接在下面的段落文字上拖選一段，點跳出來的「標重點」。標過的重點點一下可以寫筆記。
-  </div>
-  <div class="seg-list" id="segList"></div>
-  <div class="empty" id="emptyState">載入一本 EPUB 或一份 Markdown，就能開始聽。</div>
-</main>
-
-<!-- 播放控制列 -->
-<div class="player" id="player">
-  <div class="progress"><i id="progressBar"></i></div>
-  <div class="now-row">
-    <div class="now" id="nowText">準備中……</div>
-    <span id="rateVal" title="播放速度（點一下回 1.0×）">1.0×</span>
-    <span class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">待機</span></span>
-  </div>
-  <div class="controls">
-    <button class="btn btn-ghost" id="markBtn" title="標記現在唸到的句子"
-            style="min-height:40px;padding:0 12px;font-size:13px;gap:5px;border:1px solid var(--line)">
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 4h12v17l-6-4-6 4z"/></svg>標記
-    </button>
-    <button class="icon-btn rate-btn" id="rateDownBtn" title="減速">－</button>
-    <button class="icon-btn" id="prevBtn" title="上一段">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14l-11-7z"/></svg>
-    </button>
-    <button class="icon-btn play" id="playBtn" title="播放/暫停">
-      <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-    </button>
-    <button class="icon-btn" id="nextBtn" title="下一段">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5l11 7-11 7z"/></svg>
-    </button>
-    <button class="icon-btn rate-btn" id="rateUpBtn" title="加速">＋</button>
-  </div>
-</div>
-
-<button class="btn btn-primary" id="selMarkBtn" hidden>標重點</button>
 
 <button class="icon-btn" id="topBtn" hidden title="回頂部">
   <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><line x1="5" y1="12" x2="12" y2="5"/><line x1="19" y1="12" x2="12" y2="5"/></svg>
@@ -1484,6 +1486,16 @@ function stepRate(cur, dir) {
   return Math.round(cand * 100) / 100;
 }
 
+// 設定抽屜開關（開著時鎖背景捲動，手機觸控才不會穿透到底下的段落清單）
+function openSettings() {
+  $("#settingsBack").hidden = false;
+  document.querySelector("main").style.overflow = "hidden";
+}
+function closeSettings() {
+  $("#settingsBack").hidden = true;
+  document.querySelector("main").style.overflow = "";
+}
+
 // 把 State.rate 套到正在播的音檔＋更新顯示（瀏覽器 TTS 下一段才生效）
 function applyRate() {
   State.audio.playbackRate = State.rate;
@@ -1639,8 +1651,8 @@ async function playIndex(i) {
   }
 
   // 雲端模式
-  if (!cfg.key) { stopAll(); toast(`請先在「語音設定」填入 ${PROVIDERS[cfg.provider].label} 的 API Key`, true); $("#settingsBack").hidden = false; return; }
-  if (cfg.provider === "azure" && !cfg.region) { stopAll(); toast("請填 Azure region（例如 eastasia）", true); $("#settingsBack").hidden = false; return; }
+  if (!cfg.key) { stopAll(); toast(`請先在「語音設定」填入 ${PROVIDERS[cfg.provider].label} 的 API Key`, true); openSettings(); return; }
+  if (cfg.provider === "azure" && !cfg.region) { stopAll(); toast("請填 Azure region（例如 eastasia）", true); openSettings(); return; }
   setStatus("loading", "合成中");
   try {
     const url = await getSegmentUrl(i);
@@ -1728,6 +1740,10 @@ function togglePlay() {
 }
 
 State.audio.addEventListener("ended", () => { if (State.playing) onSegmentEnded(); });
+// iOS Safari 每次載入新音檔會把 playbackRate 重設回 1，且 metadata 到位前設定可能被忽略——
+// 在這兩個事件重新套用目前速度，調速才不會每段被打回原速
+State.audio.addEventListener("loadedmetadata", () => { State.audio.playbackRate = State.rate; });
+State.audio.addEventListener("play", () => { State.audio.playbackRate = State.rate; });
 State.audio.addEventListener("timeupdate", () => {
   if (!State.audio.duration) return;
   const segFrac = State.audio.currentTime / State.audio.duration;
@@ -1889,7 +1905,7 @@ async function openExportModal() {
   }
   if (!cfg.key) {
     toast(`請先在「語音設定」填 ${PROVIDERS[cfg.provider].label} 的 API Key`, true);
-    $("#settingsBack").hidden = false; return;
+    openSettings(); return;
   }
   if (cfg.provider === "azure" && !cfg.region) { toast("請填 Azure region", true); return; }
   $("#exportModalBack").hidden = false;
@@ -2312,10 +2328,10 @@ $("#provider").addEventListener("change", () => { updateProviderUI(); updateSegL
 $("#model").addEventListener("change", () => { updateProviderUI(); updateSegLenUI(); rememberPrefs(); });
 $("#voice").addEventListener("change", rememberPrefs);
 
-// 設定抽屜：頂欄齒輪開、完成鈕／點背景關
-$("#settingsBtn").addEventListener("click", () => { $("#settingsBack").hidden = false; });
-$("#settingsCloseBtn").addEventListener("click", () => { $("#settingsBack").hidden = true; });
-$("#settingsBack").addEventListener("click", (e) => { if (e.target.id === "settingsBack") $("#settingsBack").hidden = true; });
+// 設定抽屜：頂欄齒輪開、完成鈕／點背景關；開著時鎖背景捲動（手機上才不會捲到底下的段落）
+$("#settingsBtn").addEventListener("click", openSettings);
+$("#settingsCloseBtn").addEventListener("click", closeSettings);
+$("#settingsBack").addEventListener("click", (e) => { if (e.target.id === "settingsBack") closeSettings(); });
 
 // 回頂部浮鈕（向下捲超過一個螢幕高才浮現）＋點資訊行跳回當前段
 const mainEl = document.querySelector("main");
