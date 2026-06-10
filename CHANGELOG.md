@@ -12,6 +12,8 @@
 
 **手機體驗**
 - 修頁面左右漂移：全頁鎖橫向捲動、段落長字串（網址等）強制斷行、窄螢幕控制列收縮
+- 修 iOS 調速失效：Safari 每載入新音檔會把 playbackRate 重設回 1，改在 loadedmetadata／play 事件重新套用
+- 修設定抽屜捲動穿透：抽屜移出 `<main>` 捲動容器、開啟時鎖背景捲動、`overscroll-behavior: contain`
 - 新增「回頂部」浮鈕（向下捲超過一個螢幕高才浮現）；點播放列「現在唸到」那行可跳回正在播的段落
 - 測試 43 條（新增 `tests/seglen.test.mjs`）
 
