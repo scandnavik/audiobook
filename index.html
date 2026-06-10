@@ -979,6 +979,24 @@ function guessGender(v) {
   return "";
 }
 
+/* ============ 重點筆記:句界吸附 ============ */
+// 把 0-1 的播放比例位置吸附到包含它的整句;句界=。！？!?；;與換行
+function snapToSentence(text, ratio) {
+  if (!text) return { start: 0, end: 0 };
+  const ends = "。！？!?；;\n";
+  const pos = Math.min(text.length - 1, Math.max(0, Math.floor(text.length * ratio)));
+  let start = 0;
+  for (let i = pos - 1; i >= 0; i--) {
+    if (ends.includes(text[i])) { start = i + 1; break; }
+  }
+  let end = text.length;
+  for (let i = pos; i < text.length; i++) {
+    if (ends.includes(text[i])) { end = i + 1; break; }
+  }
+  while (start < end && /\s/.test(text[start])) start++;
+  return { start, end };
+}
+
 /* ============ 雲端 TTS 合成（provider 插座）============ */
 // 各家單次請求長度上限不同（Google 5000 bytes、Azure 10 分鐘音訊），
 // 超限時內部依句切塊、逐塊合成後串接 MP3（MPEG frame 自含，直接串接可播）
