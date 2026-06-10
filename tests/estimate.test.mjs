@@ -16,6 +16,7 @@ test("按字計費引擎:只算未快取字數", () => {
   assert.equal(e.newChars, 50000);
   assert.ok(Math.abs(e.usd - 0.75) < 1e-9);
   assert.ok(e.sizeMB > 0 && e.minutes > 0 && e.timeMin >= 1);
+  assert.ok(Math.abs(exportEstimate(100000, 50000, "openai", "tts-1-hd").usd - 1.5) < 1e-9); // hd 翻倍
 });
 
 test("全部已快取 → $0", () => {

@@ -804,16 +804,20 @@ async function parseEpub(buf) {
 }
 
 /* ============ 語音快取＋書庫（IndexedDB）============ */
-const DB_NAME = "shuoshu.cache", STORE = "audio", DOCS = "docs";
+const DB_NAME = "shuoshu.cache", STORE = "audio", DOCS = "docs", MARKS = "marks";
 let _db = null;
 function openDB() {
   return new Promise((resolve, reject) => {
     if (_db) return resolve(_db);
-    const req = indexedDB.open(DB_NAME, 2);
+    const req = indexedDB.open(DB_NAME, 3);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
       if (!db.objectStoreNames.contains(DOCS)) db.createObjectStore(DOCS, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(MARKS)) {
+        const s = db.createObjectStore(MARKS, { keyPath: "id", autoIncrement: true });
+        s.createIndex("byDoc", "docId");
+      }
     };
     req.onsuccess = () => { _db = req.result; resolve(_db); };
     req.onerror = () => reject(req.error);
@@ -882,6 +886,7 @@ async function docsAll() {
 }
 async function docsDelete(id) {
   try {
+    await marksDeleteByDoc(id);
     const db = await openDB();
     await new Promise((res) => {
       const tx = db.transaction(DOCS, "readwrite").objectStore(DOCS).delete(id);
@@ -894,6 +899,48 @@ function guessTitle(raw) {
   if (h) return h[1].replace(/[#*`]/g, "").trim().slice(0, 40);
   const line = raw.split("\n").map(s => s.trim()).find(s => s && !/^---/.test(s));
   return (line || "未命名文件").slice(0, 40);
+}
+
+/* ============ 重點筆記（IndexedDB marks store）============ */
+async function marksAdd(m) {
+  const db = await openDB();
+  return await new Promise((res, rej) => {
+    const tx = db.transaction(MARKS, "readwrite").objectStore(MARKS).add(m);
+    tx.onsuccess = () => res(tx.result);   // 回傳 autoIncrement id
+    tx.onerror = () => rej(tx.error);
+  });
+}
+async function marksPut(m) {
+  try {
+    const db = await openDB();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(MARKS, "readwrite").objectStore(MARKS).put(m);
+      tx.onsuccess = () => res(); tx.onerror = () => rej(tx.error);
+    });
+  } catch (e) {}
+}
+async function marksByDoc(docId) {
+  try {
+    const db = await openDB();
+    return await new Promise((res, rej) => {
+      const tx = db.transaction(MARKS, "readonly").objectStore(MARKS).index("byDoc").getAll(docId);
+      tx.onsuccess = () => res(tx.result || []);
+      tx.onerror = () => rej(tx.error);
+    });
+  } catch (e) { return []; }
+}
+async function marksDelete(id) {
+  try {
+    const db = await openDB();
+    await new Promise((res) => {
+      const tx = db.transaction(MARKS, "readwrite").objectStore(MARKS).delete(id);
+      tx.onsuccess = () => res(); tx.onerror = () => res();
+    });
+  } catch (e) {}
+}
+async function marksDeleteByDoc(docId) {
+  const all = await marksByDoc(docId);
+  for (const m of all) await marksDelete(m.id);
 }
 
 /* ============ 語系／聲色 ============ */
@@ -1117,7 +1164,7 @@ function exportEstimate(totalChars, cachedChars, provider, model) {
              : provider === "google" ? 4
              : provider === "azure" ? 15
              : null;
-  let usd = null;
+  let usd = null; // browser 引擎會留 null（呼叫端先擋掉 browser 才會進來）
   if (perM !== null) usd = newChars / 1e6 * perM;
   else if (provider === "openai" || provider === "gemini") usd = newMinutes * 0.015; // mini-tts / gemini 按時
   const sizeMB = (provider === "gemini" ? 2.9 : 0.5) * minutes;
