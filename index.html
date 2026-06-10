@@ -488,6 +488,7 @@
   <!-- 段落 -->
   <div class="seg-meta" id="segMeta" hidden>
     <span id="segCount">0 段</span>
+    <button class="btn btn-ghost" id="exportBtn" style="min-height:36px;padding:0 14px;font-size:13px">匯出音檔</button>
     <span id="segChars">0 字</span>
   </div>
   <div class="seg-list" id="segList"></div>
@@ -526,6 +527,18 @@
       <button class="btn btn-primary" id="markSaveBtn">儲存</button>
       <button class="btn btn-ghost" id="markDelBtn" style="color:var(--danger)">刪除重點</button>
       <button class="btn btn-ghost" id="markCloseBtn">關閉</button>
+    </div>
+  </div>
+</div>
+<div class="modal-back" id="exportModalBack" hidden>
+  <div class="modal">
+    <h3>匯出音檔</h3>
+    <div id="exportInfo" style="font-size:14px;line-height:1.9;color:var(--text)"></div>
+    <div class="progress" id="exportProg" hidden style="margin:14px 0 6px"><i id="exportProgBar"></i></div>
+    <div class="hint" id="exportStatus"></div>
+    <div class="row">
+      <button class="btn btn-primary" id="exportGoBtn">開始匯出</button>
+      <button class="btn btn-ghost" id="exportCancelBtn">取消</button>
     </div>
   </div>
 </div>
@@ -1457,11 +1470,8 @@ async function segCacheKey(text, cfg) {
   return "v2|" + cfg.provider + "|" + model + "|" + cfg.voice + "|" + spd + "|" + effectiveInstructions(cfg) + "|" + await sha1(text);
 }
 
-// 取得某段的可播放 URL（含快取與預抓去重）
-async function getSegmentUrl(i) {
-  if (State.blobUrls.has(i)) return State.blobUrls.get(i);
-  const cfg = cfgNow();
-  const text = State.segments[i];
+// 取得某段語音 blob（IndexedDB 快取 → 雲端請求);播放與匯出共用
+async function getSegmentBlob(text, cfg) {
   const key = await segCacheKey(text, cfg);
   let blob = null;
   if (cfg.useCache) blob = await cacheGet(key);
@@ -1469,6 +1479,12 @@ async function getSegmentUrl(i) {
     blob = await PROVIDERS[cfg.provider].synth(text, cfg);
     if (cfg.useCache) cachePut(key, blob);
   }
+  return blob;
+}
+// 取得某段的可播放 URL（含記憶體層與預抓去重）
+async function getSegmentUrl(i) {
+  if (State.blobUrls.has(i)) return State.blobUrls.get(i);
+  const blob = await getSegmentBlob(State.segments[i], cfgNow());
   const url = URL.createObjectURL(blob);
   State.blobUrls.set(i, url);
   return url;
@@ -1775,6 +1791,70 @@ $("#marksCopyBtn").addEventListener("click", async () => {
     await navigator.clipboard.writeText(currentMarksMd());
     toast("已複製 " + State.marks.length + " 則重點，可直接貼進筆記軟體");
   } catch (e) { toast("複製失敗，請改用下載", true); }
+});
+
+/* ============ 整本匯出音檔 ============ */
+const Exporter = { running: false, cancel: false };
+
+// 章節 → 段範圍;前言（第一章之前的段）獨立成檔;無章節=整本一檔
+function chapterRanges() {
+  const n = State.segments.length;
+  if (!State.chapters.length) return [{ title: State.docTitle || "全書", from: 0, to: n }];
+  const ranges = [];
+  if (State.chapters[0].index > 0) ranges.push({ title: "前言", from: 0, to: State.chapters[0].index });
+  State.chapters.forEach((c, k) => {
+    ranges.push({ title: c.title, from: c.index, to: k + 1 < State.chapters.length ? State.chapters[k + 1].index : n });
+  });
+  return ranges.filter(r => r.to > r.from);
+}
+
+async function countCachedChars(cfg) {
+  let cached = 0;
+  for (const s of State.segments) {
+    if (await cacheGet(await segCacheKey(s, cfg))) cached += s.length;
+  }
+  return cached;
+}
+
+async function openExportModal() {
+  if (!State.segments.length) { toast("先載入文件", true); return; }
+  const cfg = cfgNow();
+  if (cfg.provider === "browser") {
+    toast("瀏覽器內建引擎不提供音訊資料，匯出請改用雲端引擎", true); return;
+  }
+  if (!cfg.key) {
+    toast(`請先在「語音設定」填 ${PROVIDERS[cfg.provider].label} 的 API Key`, true);
+    $("#settings").open = true; return;
+  }
+  if (cfg.provider === "azure" && !cfg.region) { toast("請填 Azure region", true); return; }
+  $("#exportModalBack").hidden = false;
+  $("#exportGoBtn").hidden = false;
+  $("#exportGoBtn").disabled = true;
+  $("#exportProg").hidden = true;
+  $("#exportProgBar").style.width = "0";
+  $("#exportStatus").textContent = "";
+  $("#exportInfo").textContent = "計算費用與檔案大小中……";
+  const total = State.segments.reduce((a, s) => a + s.length, 0);
+  const cached = await countCachedChars(cfg);
+  const est = exportEstimate(total, cached, cfg.provider, cfg.model);
+  const usdTxt = est.usd === null ? "依方案而定"
+    : est.usd === 0 ? "$0（全部已有快取）"
+    : "≈ US$" + est.usd.toFixed(2) + "（約 NT$" + Math.round(est.usd * 31.5) + "）";
+  const fmt = cfg.provider === "gemini" ? "WAV（無壓縮，檔較大）" : "MP3";
+  $("#exportInfo").innerHTML =
+    `全書 ${total.toLocaleString()} 字，其中 <b>${cached.toLocaleString()} 字已有快取（$0）</b><br>` +
+    `預估新合成費用：<b>${usdTxt}</b>` +
+    (cfg.provider === "google" ? "<br>（Google 每月有免費額度，額度內實付 $0）" : "") + "<br>" +
+    `預估音訊：約 ${Math.max(1, Math.round(est.minutes))} 分鐘 / ${Math.max(1, Math.round(est.sizeMB))} MB（${fmt}，按章節分檔打包 zip）<br>` +
+    `預估合成時間：約 ${Math.max(1, est.timeMin)} 分鐘<br>` +
+    `<span style="color:var(--warn)">檔案較大，建議在電腦端執行；手機請全程保持螢幕開啟。</span>`;
+  $("#exportGoBtn").disabled = false;
+}
+
+$("#exportBtn").addEventListener("click", openExportModal);
+$("#exportCancelBtn").addEventListener("click", () => {
+  if (Exporter.running) { Exporter.cancel = true; $("#exportStatus").textContent = "取消中……"; }
+  else $("#exportModalBack").hidden = true;
 });
 
 /* ============ 重點筆記:建立與編輯 ============ */
