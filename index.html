@@ -687,6 +687,7 @@ function zipStore(entries) {
     dv.setUint16(4, 20, true);           // version needed
     dv.setUint16(6, 0x0800, true);       // general purpose: UTF-8 檔名
     dv.setUint16(8, 0, true);            // method 0 = store
+    // offsets 10-13: mod time/date 留 0（=1980-01-01），下載用途可接受
     dv.setUint32(14, crc, true);
     dv.setUint32(18, e.data.length, true);
     dv.setUint32(22, e.data.length, true);
@@ -704,6 +705,7 @@ function zipStore(entries) {
     dv.setUint16(4, 20, true);
     dv.setUint16(6, 20, true);
     dv.setUint16(8, 0x0800, true);
+    dv.setUint16(10, 0, true);           // compression method: store
     dv.setUint32(16, c.crc, true);
     dv.setUint32(20, c.size, true);
     dv.setUint32(24, c.size, true);

@@ -23,3 +23,9 @@ test("zipStore round-trip:自家 parser 能讀回（含中文檔名）", async (
   assert.deepEqual(await zipExtract(zip.buffer, ea), a);
   assert.deepEqual(await zipExtract(zip.buffer, entries.get("02-第二章.mp3")), b);
 });
+
+test("zipStore: 0-byte entry round-trips", async () => {
+  const zip = zipStore([{ name: "empty.mp3", data: new Uint8Array(0) }]);
+  const entries = zipEntries(zip.buffer);
+  assert.deepEqual(await zipExtract(zip.buffer, entries.get("empty.mp3")), new Uint8Array(0));
+});
