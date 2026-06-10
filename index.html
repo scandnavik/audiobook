@@ -71,7 +71,7 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   /* hidden 屬性永遠生效：class 設了 display（.btn/.icon-btn/.modal-back…）也蓋不掉 */
   [hidden] { display: none !important; }
-  html, body { margin: 0; padding: 0; height: 100%; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow-x: hidden; }
   body {
     background: var(--bg);
     color: var(--text);
@@ -115,6 +115,7 @@
   main {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 16px 16px 180px;
     -webkit-overflow-scrolling: touch;
   }
@@ -158,18 +159,19 @@
   .btn-ghost { background: var(--bg-elev2); color: var(--text); }
   .btn:disabled { opacity: .45; cursor: not-allowed; }
 
-  /* 設定面板 */
-  details.settings {
-    margin: 14px 0; border: 1px solid var(--line); border-radius: var(--radius);
-    background: var(--bg-elev); overflow: hidden;
+  /* 設定面板（覆蓋式抽屜，由頂欄齒輪鈕開啟，讀到任何位置都能調） */
+  .settings-body { padding: 0 2px 4px; }
+  #topBtn {
+    position: fixed; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 180px); z-index: 40;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--bg-elev2); border: 1px solid var(--line); color: var(--text);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .18);
   }
-  details.settings > summary {
-    list-style: none; cursor: pointer; padding: 14px 16px; font-weight: 600;
-    display: flex; align-items: center; gap: 10px; user-select: none;
+  .now-row .now { cursor: pointer; }
+  @media (max-width: 359px) {
+    .controls { gap: 3px; }
+    .rate-btn { width: 28px; }
   }
-  details.settings > summary::-webkit-details-marker { display: none; }
-  details.settings[open] > summary { border-bottom: 1px solid var(--line); }
-  .settings-body { padding: 4px 16px 16px; }
   .field { margin-top: 14px; }
   .field label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 6px; }
   .field input[type=text], .field input[type=password], .field select {
@@ -201,7 +203,7 @@
     flex: 0 0 auto; font-size: 12px; color: var(--text-dim);
     font-variant-numeric: tabular-nums; min-width: 26px; padding-top: 2px;
   }
-  .seg .txt { flex: 1; font-size: 14.5px; color: var(--text-dim); }
+  .seg .txt { flex: 1; font-size: 14.5px; color: var(--text-dim); overflow-wrap: anywhere; min-width: 0; }
   .seg.cur { border-color: var(--accent); background: var(--bg-elev2); }
   .seg.cur .txt { color: var(--text); }
   .seg.done .num { color: var(--good); }
@@ -313,6 +315,9 @@
     <div class="sub">EPUB / Markdown 朗讀 · 雲端高音質</div>
   </div>
   <div class="spacer"></div>
+  <button class="icon-btn" id="settingsBtn" title="語音設定">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="2" y1="14" x2="6" y2="14"/><line x1="10" y1="8" x2="14" y2="8"/><line x1="18" y1="16" x2="22" y2="16"/></svg>
+  </button>
   <button class="icon-btn" id="themeBtn" title="切換外觀">
     <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></svg>
   </button>
@@ -361,12 +366,11 @@
     <button class="btn btn-ghost" id="clearBtn">清空</button>
   </div>
 
-  <!-- 設定 -->
-  <details class="settings" id="settings">
-    <summary>
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="2" y1="14" x2="6" y2="14"/><line x1="10" y1="8" x2="14" y2="8"/><line x1="18" y1="16" x2="22" y2="16"/></svg>
-      語音設定
-    </summary>
+  <!-- 設定（覆蓋式抽屜，頂欄齒輪鈕開啟） -->
+  <div class="modal-back" id="settingsBack" hidden>
+    <div class="modal">
+    <h3>語音設定</h3>
+    <input type="hidden" id="theme" value="auto" />
     <div class="settings-body">
       <div class="field">
         <label>語音引擎</label>
@@ -457,18 +461,11 @@
       </div>
 
       <div class="field">
-        <label>語速 <span class="range-val" id="speedVal">1.0×</span></label>
-        <div class="range-wrap">
-          <input type="range" id="speed" min="0.5" max="2" step="0.05" value="1" />
-        </div>
-      </div>
-
-      <div class="field">
-        <label>每段最長字數 <span class="range-val" id="segLenVal">2500</span></label>
+        <label><input type="checkbox" id="segAuto" checked style="vertical-align:-2px"> 每段最長字數自動配（依引擎）<span class="range-val" id="segLenVal">2500</span></label>
         <div class="range-wrap">
           <input type="range" id="segLen" min="300" max="4000" step="100" value="2500" />
         </div>
-        <div class="hint">段落會自動打包到接近此長度才送合成——數字越大朗讀越連貫、接縫越少，但首段等待越久。OpenAI 單次上限約 4000 字，聽整本書建議 2500–4000。</div>
+        <div class="hint">自動配會依所選引擎與模型抓單次請求的甜蜜點（換引擎不用自己記數字）；取消勾選可手動指定。數字越大朗讀越連貫、接縫越少，但首段等待越久。</div>
       </div>
 
       <div class="field">
@@ -477,19 +474,13 @@
       <div class="field">
         <label><input type="checkbox" id="useCache" checked style="vertical-align:-2px"> 快取已合成語音（重播 / 重開省 API 費用）</label>
       </div>
-      <div class="field">
-        <label>外觀</label>
-        <select id="theme">
-          <option value="auto">跟隨系統</option>
-          <option value="light">淺色</option>
-          <option value="dark">深色</option>
-        </select>
-      </div>
-      <div class="row">
+      <div class="row" style="margin-top:16px">
+        <button class="btn btn-primary" id="settingsCloseBtn">完成</button>
         <button class="btn btn-ghost" id="clearCacheBtn">清空語音快取</button>
       </div>
     </div>
-  </details>
+    </div>
+  </div>
 
   <!-- 章節導覽 -->
   <div class="field" id="chapterNav" hidden style="margin:18px 0 0">
@@ -539,6 +530,10 @@
 
 <button class="btn btn-primary" id="selMarkBtn" hidden>標重點</button>
 
+<button class="icon-btn" id="topBtn" hidden title="回頂部">
+  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><line x1="5" y1="12" x2="12" y2="5"/><line x1="19" y1="12" x2="12" y2="5"/></svg>
+</button>
+
 <div class="modal-back" id="markModalBack" hidden>
   <div class="modal">
     <h3>重點</h3>
@@ -587,7 +582,7 @@ async function sha1(str) {
 }
 
 /* ============ 設定持久化 ============ */
-const SKEYS = ["theme","provider","lang","gender","apiKey","gKey","aKey","aRegion","gemKey","model","voice","instructions","speed","segLen","skipCode","useCache","browserVoice"];
+const SKEYS = ["theme","provider","lang","gender","apiKey","gKey","aKey","aRegion","gemKey","model","voice","instructions","segAuto","segLen","skipCode","useCache","browserVoice"];
 function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem("shuoshu.settings") || "{}");
@@ -1282,6 +1277,25 @@ function chunkForProvider(text, maxChars) {
 function openaiChunkLimit(model) {
   return model === "gpt-4o-mini-tts" ? 1000 : 4000;
 }
+// 「每段最長字數」自動配：依引擎與模型抓單次請求甜蜜點，切段直接貼齊、避免段內再分塊
+function autoSegLen(provider, model) {
+  if (provider === "openai") return model === "gpt-4o-mini-tts" ? 1000 : 4000;
+  if (provider === "google") return 1300;
+  if (provider === "azure") return 1800;
+  if (provider === "gemini") return 4000;
+  if (provider === "browser") return 800;
+  return 2500;
+}
+function effSegLen() {
+  return $("#segAuto").checked
+    ? autoSegLen($("#provider").value, $("#model").value)
+    : parseInt($("#segLen").value, 10);
+}
+function updateSegLenUI() {
+  const auto = $("#segAuto").checked;
+  $("#segLen").disabled = auto;
+  $("#segLenVal").textContent = auto ? "自動 " + effSegLen() : $("#segLen").value;
+}
 async function synthChunked(text, cfg, maxChars, synthOne) {
   const chunks = chunkForProvider(text, maxChars);
   const blobs = [];
@@ -1291,7 +1305,6 @@ async function synthChunked(text, cfg, maxChars, synthOne) {
 
 async function synthOpenAIOne(text, cfg) {
   const body = { model: cfg.model, input: text, voice: cfg.voice, response_format: "mp3" };
-  if (cfg.model.startsWith("tts-1")) body.speed = cfg.speed;            // 只有 tts-1 系列支援 speed
   const eff = effectiveInstructions(cfg);
   if (eff) body.instructions = eff;
   const resp = await fetch("https://api.openai.com/v1/audio/speech", {
@@ -1312,7 +1325,7 @@ async function synthGoogleOne(text, cfg) {
   const body = {
     input: { text },
     voice: { languageCode: langCode, name: cfg.voice },
-    audioConfig: { audioEncoding: "MP3", speakingRate: Math.min(2, Math.max(0.25, cfg.speed)) },
+    audioConfig: { audioEncoding: "MP3" },
   };
   const resp = await fetch("https://texttospeech.googleapis.com/v1/text:synthesize?key=" + encodeURIComponent(cfg.key), {
     method: "POST",
@@ -1334,8 +1347,7 @@ async function synthGoogleOne(text, cfg) {
 async function synthAzureOne(text, cfg) {
   const lang = cfg.voice.split("-").slice(0, 2).join("-"); // zh-TW
   const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const rate = Math.round((cfg.speed - 1) * 100);
-  const ssml = `<speak version='1.0' xml:lang='${lang}'><voice name='${cfg.voice}'><prosody rate='${rate >= 0 ? "+" : ""}${rate}%'>${esc}</prosody></voice></speak>`;
+  const ssml = `<speak version='1.0' xml:lang='${lang}'><voice name='${cfg.voice}'>${esc}</voice></speak>`;
   const resp = await fetch(`https://${cfg.region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
     method: "POST",
     headers: {
@@ -1474,8 +1486,7 @@ function stepRate(cur, dir) {
 
 // 把 State.rate 套到正在播的音檔＋更新顯示（瀏覽器 TTS 下一段才生效）
 function applyRate() {
-  const cfg = cfgNow();
-  State.audio.playbackRate = State.rate * (cfg.provider === "gemini" ? cfg.speed : 1);
+  State.audio.playbackRate = State.rate;
   $("#rateVal").textContent = State.rate.toFixed(2).replace(/0$/, "") + "×";
 }
 
@@ -1509,7 +1520,6 @@ function cfgNow() {
     model: $("#model").value,
     voice: $("#voice").value,
     instructions: $("#instructions").value.trim(),
-    speed: parseFloat($("#speed").value),
     useCache: $("#useCache").checked,
     browserVoice: $("#browserVoice").value,
   };
@@ -1518,9 +1528,8 @@ function cfgNow() {
 async function segCacheKey(text, cfg) {
   // model 只對有模型欄的引擎有意義（Google／Azure 的模型內含在音色名）
   const model = (PROVIDERS[cfg.provider] || {}).models ? cfg.model : "";
-  // Gemini 的語速在播放端調（playbackRate），不影響合成結果，不進 key
-  const spd = cfg.provider === "gemini" ? 1 : cfg.speed;
-  return "v2|" + cfg.provider + "|" + model + "|" + cfg.voice + "|" + spd + "|" + effectiveInstructions(cfg) + "|" + await sha1(text);
+  // 語速一律在播放端調（playbackRate），不影響合成結果；key 的 spd 欄固定 1 維持與舊快取相容
+  return "v2|" + cfg.provider + "|" + model + "|" + cfg.voice + "|1|" + effectiveInstructions(cfg) + "|" + await sha1(text);
 }
 
 // 取得某段語音 blob（IndexedDB 快取 → 雲端請求）；播放與匯出共用
@@ -1630,17 +1639,16 @@ async function playIndex(i) {
   }
 
   // 雲端模式
-  if (!cfg.key) { stopAll(); toast(`請先在「語音設定」填入 ${PROVIDERS[cfg.provider].label} 的 API Key`, true); $("#settings").open = true; return; }
-  if (cfg.provider === "azure" && !cfg.region) { stopAll(); toast("請填 Azure region（例如 eastasia）", true); $("#settings").open = true; return; }
+  if (!cfg.key) { stopAll(); toast(`請先在「語音設定」填入 ${PROVIDERS[cfg.provider].label} 的 API Key`, true); $("#settingsBack").hidden = false; return; }
+  if (cfg.provider === "azure" && !cfg.region) { stopAll(); toast("請填 Azure region（例如 eastasia）", true); $("#settingsBack").hidden = false; return; }
   setStatus("loading", "合成中");
   try {
     const url = await getSegmentUrl(i);
     if (State.index !== i || !State.playing) return; // 期間被切換
     State.audio.src = url;
     State.srcIndex = i;
-    // Gemini API 沒有語速參數，改在播放端調（瀏覽器預設保持音高）；其他引擎已在合成端處理
-    // 快速調速（State.rate）一律疊在播放端，換速不重新合成、不另收費
-    State.audio.playbackRate = State.rate * (cfg.provider === "gemini" ? cfg.speed : 1);
+    // 語速一律在播放端調（playbackRate，瀏覽器預設保持音高），換速不重新合成、不另收費
+    State.audio.playbackRate = State.rate;
     await State.audio.play();
     setStatus("playing", "播放中");
     prefetch(i + 1); // 預抓接下來兩段，段落交界不停頓
@@ -1656,7 +1664,7 @@ async function playIndex(i) {
 function speakBrowser(text) {
   const u = new SpeechSynthesisUtterance(text);
   const cfg = cfgNow();
-  u.rate = Math.min(10, Math.max(0.1, cfg.speed * State.rate)); // 快速調速疊上去，下一段（utterance）生效
+  u.rate = Math.min(10, Math.max(0.1, State.rate)); // 播放列調速，下一段（utterance）生效
   const voices = speechSynthesis.getVoices();
   const langPat = LANG_PATTERNS[cfg.lang];
   const v = voices.find(v => v.name === cfg.browserVoice)
@@ -1881,7 +1889,7 @@ async function openExportModal() {
   }
   if (!cfg.key) {
     toast(`請先在「語音設定」填 ${PROVIDERS[cfg.provider].label} 的 API Key`, true);
-    $("#settings").open = true; return;
+    $("#settingsBack").hidden = false; return;
   }
   if (cfg.provider === "azure" && !cfg.region) { toast("請填 Azure region", true); return; }
   $("#exportModalBack").hidden = false;
@@ -2104,7 +2112,7 @@ function markCurrent() {
 }
 $("#markBtn").addEventListener("click", markCurrent);
 
-async function loadText(raw, title, plain) {
+async function loadText(raw, title, plain, fixedSegLen) {
   if (!raw || !raw.trim()) { toast("沒有內容可載入", true); return; }
   if (Exporter.running) { toast("匯出進行中，請先取消或等它完成再載入新文件", true); return; }
   stopAll();
@@ -2123,7 +2131,7 @@ async function loadText(raw, title, plain) {
 
   // EPUB 已抽成純文字，不再過 markdown 清理
   const clean = plain ? raw.replace(/\n{3,}/g, "\n\n").trim() : cleanMarkdown(raw, $("#skipCode").checked);
-  const maxLen = parseInt($("#segLen").value, 10);
+  const maxLen = fixedSegLen || effSegLen(); // 書庫沿用當時切段長度，續聽段數才對得上
   const split = splitIntoSegments(clean, maxLen);
   State.segments = split.segments;
   State.chapters = split.chapters;
@@ -2206,14 +2214,9 @@ async function renderLibrary() {
   });
 }
 async function openDoc(d) {
-  // 用當時的切段長度重切，續聽段數才對得上
-  if (d.segLen) {
-    $("#segLen").value = d.segLen;
-    $("#segLenVal").textContent = d.segLen;
-  }
   lastRaw = d.raw;
   lastPlain = !!d.plain;
-  await loadText(d.raw, d.title, d.plain);
+  await loadText(d.raw, d.title, d.plain, d.segLen); // 沿用當時切段長度，續聽段數才對得上
 }
 
 /* ============ UI 綁定 ============ */
@@ -2303,11 +2306,27 @@ SKEYS.forEach(k => {
   const el = $("#" + k);
   if (el) el.addEventListener("change", saveSettings);
 });
-$("#speed").addEventListener("input", () => { $("#speedVal").textContent = parseFloat($("#speed").value).toFixed(2) + "×"; });
-$("#segLen").addEventListener("input", () => { $("#segLenVal").textContent = $("#segLen").value; });
-$("#provider").addEventListener("change", () => { updateProviderUI(); saveSettings(); });
-$("#model").addEventListener("change", () => { updateProviderUI(); rememberPrefs(); });
+$("#segLen").addEventListener("input", updateSegLenUI);
+$("#segAuto").addEventListener("change", updateSegLenUI);
+$("#provider").addEventListener("change", () => { updateProviderUI(); updateSegLenUI(); saveSettings(); });
+$("#model").addEventListener("change", () => { updateProviderUI(); updateSegLenUI(); rememberPrefs(); });
 $("#voice").addEventListener("change", rememberPrefs);
+
+// 設定抽屜：頂欄齒輪開、完成鈕／點背景關
+$("#settingsBtn").addEventListener("click", () => { $("#settingsBack").hidden = false; });
+$("#settingsCloseBtn").addEventListener("click", () => { $("#settingsBack").hidden = true; });
+$("#settingsBack").addEventListener("click", (e) => { if (e.target.id === "settingsBack") $("#settingsBack").hidden = true; });
+
+// 回頂部浮鈕（向下捲超過一個螢幕高才浮現）＋點資訊行跳回當前段
+const mainEl = document.querySelector("main");
+mainEl.addEventListener("scroll", () => {
+  $("#topBtn").hidden = mainEl.scrollTop < window.innerHeight;
+}, { passive: true });
+$("#topBtn").addEventListener("click", () => mainEl.scrollTo({ top: 0, behavior: "smooth" }));
+$("#nowText").addEventListener("click", () => {
+  const el = $$(".seg")[State.index];
+  if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
+});
 $("#clearCacheBtn").addEventListener("click", async () => { await cacheClear(); toast("已清空語音快取"); });
 const THEME_ICONS = {
   auto:  '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18Z" fill="currentColor" stroke="none"/>',
@@ -2325,7 +2344,6 @@ function applyTheme() {
   $("#themeIcon").innerHTML = THEME_ICONS[t] || THEME_ICONS.auto;
   $("#themeBtn").title = THEME_LABELS[t] || THEME_LABELS.auto;
 }
-$("#theme").addEventListener("change", () => { applyTheme(); saveSettings(); });
 $("#themeBtn").addEventListener("click", () => {
   const order = ["auto", "light", "dark"];
   const next = order[(order.indexOf($("#theme").value) + 1) % order.length];
@@ -2402,8 +2420,7 @@ loadSettings();
 applyTheme();
 updateProviderUI();     // 依還原後的引擎顯示欄位＋重建音色清單
 if ("speechSynthesis" in window) loadBrowserVoices();
-$("#speedVal").textContent = parseFloat($("#speed").value).toFixed(2) + "×";
-$("#segLenVal").textContent = $("#segLen").value;
+updateSegLenUI();
 State.rate = stepRate(parseFloat(localStorage.getItem("shuoshu.rate")), 0); // 還原上次速度（壞值自動回 1）
 applyRate();
 updateUI();
