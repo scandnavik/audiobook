@@ -657,6 +657,76 @@ async function zipExtract(buf, e) {
   throw new Error("不支援的 ZIP 壓縮方式: " + e.method);
 }
 
+// ZIP writer(store 模式不壓縮,mp3 已壓縮過;UTF-8 檔名 flag 讓中文章名正確)
+function crc32(u8) {
+  if (!crc32.T) {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xEDB88320 : c >>> 1;
+      t[n] = c;
+    }
+    crc32.T = t;
+  }
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < u8.length; i++) crc = (crc >>> 8) ^ crc32.T[(crc ^ u8[i]) & 0xFF];
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function zipStore(entries) {
+  const enc = new TextEncoder();
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+  for (const e of entries) {
+    const name = enc.encode(e.name);
+    const crc = crc32(e.data);
+    const lh = new Uint8Array(30 + name.length);
+    const dv = new DataView(lh.buffer);
+    dv.setUint32(0, 0x04034b50, true);   // local file header
+    dv.setUint16(4, 20, true);           // version needed
+    dv.setUint16(6, 0x0800, true);       // general purpose: UTF-8 檔名
+    dv.setUint16(8, 0, true);            // method 0 = store
+    dv.setUint32(14, crc, true);
+    dv.setUint32(18, e.data.length, true);
+    dv.setUint32(22, e.data.length, true);
+    dv.setUint16(26, name.length, true);
+    lh.set(name, 30);
+    chunks.push(lh, e.data);
+    central.push({ name, crc, size: e.data.length, offset });
+    offset += lh.length + e.data.length;
+  }
+  const cdStart = offset;
+  for (const c of central) {
+    const cd = new Uint8Array(46 + c.name.length);
+    const dv = new DataView(cd.buffer);
+    dv.setUint32(0, 0x02014b50, true);   // central directory header
+    dv.setUint16(4, 20, true);
+    dv.setUint16(6, 20, true);
+    dv.setUint16(8, 0x0800, true);
+    dv.setUint32(16, c.crc, true);
+    dv.setUint32(20, c.size, true);
+    dv.setUint32(24, c.size, true);
+    dv.setUint16(28, c.name.length, true);
+    dv.setUint32(42, c.offset, true);
+    cd.set(c.name, 46);
+    chunks.push(cd);
+    offset += cd.length;
+  }
+  const eocd = new Uint8Array(22);
+  const dv = new DataView(eocd.buffer);
+  dv.setUint32(0, 0x06054b50, true);
+  dv.setUint16(8, central.length, true);
+  dv.setUint16(10, central.length, true);
+  dv.setUint32(12, offset - cdStart, true);
+  dv.setUint32(16, cdStart, true);
+  chunks.push(eocd);
+  const out = new Uint8Array(offset + 22);
+  let p = 0;
+  for (const ch of chunks) { out.set(ch, p); p += ch.length; }
+  return out;
+}
+
 // XHTML → 朗讀用純文字：只取葉節點區塊，標題補句號，表格／圖／註腳剝掉
 function htmlToPlainText(html) {
   const d = new DOMParser().parseFromString(html, "text/html");
