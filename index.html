@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="說書機" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" type="image/svg+xml" href="icon.svg" />
-<title>說書機 · Markdown 朗讀</title>
+<title>說書機 · EPUB / Markdown 有聲書</title>
 <style>
   :root {
     --bg: #0f1115;
@@ -281,6 +281,8 @@
         <label>語音引擎</label>
         <select id="provider">
           <option value="openai">OpenAI（雲端高音質，需 API key）</option>
+          <option value="google">Google Cloud（每月 100 萬字元免費，需 API key）</option>
+          <option value="azure">Azure（台灣腔音色最齊，需 key＋region）</option>
           <option value="browser">瀏覽器內建（免費，免 key）</option>
         </select>
       </div>
@@ -306,16 +308,34 @@
           </select>
         </div>
       </div>
-      <div class="hint">語系與聲色會篩選下面的音色清單。OpenAI 引擎的語系口音靠語氣指示實現（僅 gpt-4o-mini-tts 支援）；瀏覽器引擎則直接篩系統語音。</div>
+      <div class="hint">語系與聲色會篩選下面的音色清單。Google／Azure 直接有各語系專屬音色；OpenAI 的口音靠語氣指示（僅 gpt-4o-mini-tts）；瀏覽器引擎篩系統語音。</div>
 
-      <div id="openaiFields">
-        <div class="field">
-          <label>OpenAI API Key（只存在這支手機本地，不會上傳）</label>
+      <div id="cloudFields">
+        <div class="field" data-p="openai">
+          <label>OpenAI API Key（只存在本機，不會上傳）</label>
           <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off" />
-          <div class="hint">在設定畫面填入後會記住。播放時直接從你的瀏覽器連 OpenAI，內容不經過任何中間伺服器。</div>
+          <div class="hint">tts-1 系列按字計費，中文長書最划算的付費選項。</div>
+        </div>
+        <div class="field" data-p="google">
+          <label>Google Cloud API Key（只存在本機，不會上傳）</label>
+          <input type="password" id="gKey" placeholder="AIza..." autocomplete="off" />
+          <div class="hint">GCP 主控台啟用 Cloud Text-to-Speech API 後建立 API key。每月前 100 萬字元免費（Wavenet／Standard 到 400 萬），一般聽量全程免費。</div>
+        </div>
+        <div data-p="azure">
+          <div class="field-row">
+            <div class="field">
+              <label>Azure Speech Key</label>
+              <input type="password" id="aKey" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label>Region（資源區域）</label>
+              <input type="text" id="aRegion" placeholder="eastasia" />
+            </div>
+          </div>
+          <div class="hint">Azure 入口網站建 Speech 資源後拿 key 與 region（台灣用戶常用 eastasia）。</div>
         </div>
         <div class="field-row">
-          <div class="field">
+          <div class="field" data-p="openai">
             <label>模型</label>
             <select id="model">
               <option value="gpt-4o-mini-tts">gpt-4o-mini-tts（最新，可給語氣）</option>
@@ -328,10 +348,11 @@
             <select id="voice"></select>
           </div>
         </div>
-        <div class="field" id="instructionsField">
+        <div class="field" id="instructionsField" data-p="openai">
           <label>語氣指示（僅 gpt-4o-mini-tts，可留空）</label>
           <input type="text" id="instructions" placeholder="例：用沉穩、像說書人的語氣，自然斷句" />
         </div>
+        <div class="hint">播放時由你的瀏覽器直連所選引擎的 API，內容不經過任何中間伺服器；各家 key 分開記住，切換引擎不用重填。</div>
       </div>
 
       <div id="browserFields" hidden>
@@ -425,7 +446,7 @@ async function sha1(str) {
 }
 
 /* ============ 設定持久化 ============ */
-const SKEYS = ["provider","lang","gender","apiKey","model","voice","instructions","speed","segLen","skipCode","useCache","browserVoice"];
+const SKEYS = ["provider","lang","gender","apiKey","gKey","aKey","aRegion","model","voice","instructions","speed","segLen","skipCode","useCache","browserVoice"];
 function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem("shuoshu.settings") || "{}");
@@ -761,6 +782,37 @@ const OPENAI_VOICES = [
   { id: "onyx",    label: "onyx（低沉男聲）",    g: "m" },
   { id: "fable",   label: "fable（敘事感）",     g: "n" },
 ];
+// Google Cloud TTS：模型內含在音色名（Wavenet／Neural2／Standard）
+const GOOGLE_VOICES = [
+  { id: "cmn-TW-Wavenet-A",  label: "台灣女聲 A（Wavenet）",  g: "f", lang: "zh-TW" },
+  { id: "cmn-TW-Wavenet-B",  label: "台灣男聲 B（Wavenet）",  g: "m", lang: "zh-TW" },
+  { id: "cmn-TW-Wavenet-C",  label: "台灣男聲 C（Wavenet）",  g: "m", lang: "zh-TW" },
+  { id: "cmn-TW-Standard-A", label: "台灣女聲 A（Standard，最省）", g: "f", lang: "zh-TW" },
+  { id: "cmn-CN-Wavenet-A",  label: "普通話女聲 A（Wavenet）", g: "f", lang: "zh" },
+  { id: "cmn-CN-Wavenet-B",  label: "普通話男聲 B（Wavenet）", g: "m", lang: "zh" },
+  { id: "cmn-CN-Wavenet-D",  label: "普通話女聲 D（Wavenet）", g: "f", lang: "zh" },
+  { id: "en-US-Neural2-F",   label: "英文女聲 F（Neural2）",   g: "f", lang: "en" },
+  { id: "en-US-Neural2-D",   label: "英文男聲 D（Neural2）",   g: "m", lang: "en" },
+  { id: "ja-JP-Neural2-B",   label: "日文女聲 B（Neural2）",   g: "f", lang: "ja" },
+  { id: "ja-JP-Neural2-C",   label: "日文男聲 C（Neural2）",   g: "m", lang: "ja" },
+  { id: "ko-KR-Neural2-A",   label: "韓文女聲 A（Neural2）",   g: "f", lang: "ko" },
+  { id: "ko-KR-Neural2-C",   label: "韓文男聲 C（Neural2）",   g: "m", lang: "ko" },
+];
+// Azure neural 音色
+const AZURE_VOICES = [
+  { id: "zh-TW-HsiaoChenNeural", label: "曉臻（台灣女聲）",   g: "f", lang: "zh-TW" },
+  { id: "zh-TW-HsiaoYuNeural",   label: "曉雨（台灣女聲）",   g: "f", lang: "zh-TW" },
+  { id: "zh-TW-YunJheNeural",    label: "雲哲（台灣男聲）",   g: "m", lang: "zh-TW" },
+  { id: "zh-CN-XiaoxiaoNeural",  label: "曉曉（普通話女聲）", g: "f", lang: "zh" },
+  { id: "zh-CN-YunxiNeural",     label: "雲希（普通話男聲）", g: "m", lang: "zh" },
+  { id: "zh-CN-YunyangNeural",   label: "雲揚（普通話男聲）", g: "m", lang: "zh" },
+  { id: "en-US-JennyNeural",     label: "Jenny（英文女聲）",  g: "f", lang: "en" },
+  { id: "en-US-GuyNeural",       label: "Guy（英文男聲）",    g: "m", lang: "en" },
+  { id: "ja-JP-NanamiNeural",    label: "Nanami（日文女聲）", g: "f", lang: "ja" },
+  { id: "ja-JP-KeitaNeural",     label: "Keita（日文男聲）",  g: "m", lang: "ja" },
+  { id: "ko-KR-SunHiNeural",     label: "Sun-Hi（韓文女聲）", g: "f", lang: "ko" },
+  { id: "ko-KR-InJoonNeural",    label: "InJoon（韓文男聲）", g: "m", lang: "ko" },
+];
 const LANG_PATTERNS = {
   "zh-TW": /zh[-_]?(TW|Hant)|cmn[-_]?Hant/i,
   zh: /^zh|^cmn/i,
@@ -777,26 +829,66 @@ const LANG_TTS_INSTRUCTIONS = {
   ko: "자연스러운 한국어로 읽어주세요.",
 };
 function effectiveInstructions(cfg) {
-  if (cfg.model !== "gpt-4o-mini-tts") return "";
+  if (cfg.provider !== "openai" || cfg.model !== "gpt-4o-mini-tts") return "";
   const parts = [];
   if (LANG_TTS_INSTRUCTIONS[cfg.lang]) parts.push(LANG_TTS_INSTRUCTIONS[cfg.lang]);
   if (cfg.instructions) parts.push(cfg.instructions);
   return parts.join(" ");
 }
 
-// 依聲色重建 OpenAI 音色清單（中性音色只在「不指定」時出現）
-function filterOpenAIVoices() {
+// 每家引擎各自記住上次選的音色／模型（切換引擎不互相蓋掉）
+function providerPrefs() {
+  try { return JSON.parse(localStorage.getItem("shuoshu.byProvider") || "{}"); } catch (e) { return {}; }
+}
+function rememberPrefs() {
+  const p = $("#provider").value;
+  if (p === "browser") return;
+  const o = providerPrefs();
+  o[p] = { voice: $("#voice").value, model: $("#model").value };
+  localStorage.setItem("shuoshu.byProvider", JSON.stringify(o));
+}
+
+// 依「引擎＋聲色＋語系」重建音色清單（中性音色只在「不指定」時出現）
+function filterVoices() {
+  const p = $("#provider").value;
+  if (p === "browser") return;
+  const conf = PROVIDERS[p];
   const g = $("#gender").value;
+  const langSel = $("#lang").value;
+
+  let list = conf.voices.filter(v => g === "any" || v.g === g);
+  if (langSel !== "auto" && conf.voices.some(v => v.lang)) {
+    const byLang = list.filter(v => v.lang === langSel);
+    if (byLang.length) list = byLang;
+  }
+  if (!list.length) list = conf.voices;
+
   const sel = $("#voice");
-  const keep = sel.value;
-  const list = OPENAI_VOICES.filter(v => g === "any" || v.g === g);
+  const saved = (providerPrefs()[p] || {}).voice || sel.value;
   sel.innerHTML = "";
   list.forEach(v => {
     const o = document.createElement("option");
     o.value = v.id; o.textContent = v.label;
     sel.appendChild(o);
   });
-  sel.value = list.some(v => v.id === keep) ? keep : list[0].id;
+  sel.value = list.some(v => v.id === saved) ? saved : list[0].id;
+
+  if (p === "openai") {
+    const savedM = (providerPrefs()[p] || {}).model;
+    if (savedM && [...$("#model").options].some(o => o.value === savedM)) $("#model").value = savedM;
+  }
+}
+
+// 依所選引擎顯示對應欄位
+function updateProviderUI() {
+  const p = $("#provider").value;
+  $("#cloudFields").hidden = p === "browser";
+  $("#browserFields").hidden = p !== "browser";
+  $$("#cloudFields [data-p]").forEach(el => { el.hidden = el.dataset.p !== p; });
+  if (p !== "browser") {
+    filterVoices();
+    $("#instructionsField").hidden = !(p === "openai" && $("#model").value === "gpt-4o-mini-tts");
+  }
 }
 
 // Web Speech API 不給性別，只能從常見語音名稱猜；猜不到的在「不指定」時照常顯示
@@ -809,15 +901,38 @@ function guessGender(v) {
   return "";
 }
 
-/* ============ OpenAI TTS 合成 ============ */
-async function synthOpenAI(text, cfg) {
+/* ============ 雲端 TTS 合成（provider 插座）============ */
+// 各家單次請求長度上限不同（Google 5000 bytes、Azure 10 分鐘音訊），
+// 超限時內部依句切塊、逐塊合成後串接 MP3（MPEG frame 自含，直接串接可播）
+function chunkForProvider(text, maxChars) {
+  if (text.length <= maxChars) return [text];
+  const sentences = text.match(/[^。！？!?\.\n]+[。！？!?\.\n]+|[^。！？!?\.\n]+$/g) || [text];
+  const chunks = [];
+  let buf = "";
+  for (const s of sentences) {
+    if (buf && (buf + s).length > maxChars) { chunks.push(buf); buf = ""; }
+    let rest = s;
+    while (rest.length > maxChars) { chunks.push(rest.slice(0, maxChars)); rest = rest.slice(maxChars); }
+    buf += rest;
+  }
+  if (buf) chunks.push(buf);
+  return chunks;
+}
+async function synthChunked(text, cfg, maxChars, synthOne) {
+  const chunks = chunkForProvider(text, maxChars);
+  const blobs = [];
+  for (const c of chunks) blobs.push(await synthOne(c, cfg));
+  return blobs.length === 1 ? blobs[0] : new Blob(blobs, { type: "audio/mpeg" });
+}
+
+async function synthOpenAIOne(text, cfg) {
   const body = { model: cfg.model, input: text, voice: cfg.voice, response_format: "mp3" };
   if (cfg.model.startsWith("tts-1")) body.speed = cfg.speed;            // 只有 tts-1 系列支援 speed
   const eff = effectiveInstructions(cfg);
   if (eff) body.instructions = eff;
   const resp = await fetch("https://api.openai.com/v1/audio/speech", {
     method: "POST",
-    headers: { "Authorization": "Bearer " + cfg.apiKey, "Content-Type": "application/json" },
+    headers: { "Authorization": "Bearer " + cfg.key, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!resp.ok) {
@@ -827,6 +942,55 @@ async function synthOpenAI(text, cfg) {
   }
   return await resp.blob();
 }
+
+async function synthGoogleOne(text, cfg) {
+  const langCode = cfg.voice.split("-").slice(0, 2).join("-"); // cmn-TW / en-US
+  const body = {
+    input: { text },
+    voice: { languageCode: langCode, name: cfg.voice },
+    audioConfig: { audioEncoding: "MP3", speakingRate: Math.min(2, Math.max(0.25, cfg.speed)) },
+  };
+  const resp = await fetch("https://texttospeech.googleapis.com/v1/text:synthesize?key=" + encodeURIComponent(cfg.key), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    let msg = resp.status + " " + resp.statusText;
+    try { const j = await resp.json(); if (j.error?.message) msg = j.error.message; } catch (e) {}
+    throw new Error("Google: " + msg);
+  }
+  const j = await resp.json();
+  const bin = atob(j.audioContent);
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return new Blob([u8], { type: "audio/mpeg" });
+}
+
+async function synthAzureOne(text, cfg) {
+  const lang = cfg.voice.split("-").slice(0, 2).join("-"); // zh-TW
+  const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const rate = Math.round((cfg.speed - 1) * 100);
+  const ssml = `<speak version='1.0' xml:lang='${lang}'><voice name='${cfg.voice}'><prosody rate='${rate >= 0 ? "+" : ""}${rate}%'>${esc}</prosody></voice></speak>`;
+  const resp = await fetch(`https://${cfg.region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
+    method: "POST",
+    headers: {
+      "Ocp-Apim-Subscription-Key": cfg.key,
+      "Content-Type": "application/ssml+xml",
+      "X-Microsoft-OutputFormat": "audio-24khz-96kbitrate-mono-mp3",
+    },
+    body: ssml,
+  });
+  if (!resp.ok) throw new Error("Azure: " + resp.status + " " + resp.statusText + (resp.status === 401 ? "（key 或 region 不對）" : ""));
+  return await resp.blob();
+}
+
+// Provider 註冊表：加新引擎＝加一筆資料＋一個 synthXxxOne()
+const PROVIDERS = {
+  openai: { label: "OpenAI",       voices: OPENAI_VOICES, synth: (t, c) => synthChunked(t, c, 4000, synthOpenAIOne) },
+  google: { label: "Google Cloud", voices: GOOGLE_VOICES, synth: (t, c) => synthChunked(t, c, 1300, synthGoogleOne) },
+  azure:  { label: "Azure",        voices: AZURE_VOICES,  synth: (t, c) => synthChunked(t, c, 1800, synthAzureOne) },
+};
 
 /* ============ 播放引擎 ============ */
 const State = {
@@ -856,10 +1020,14 @@ async function saveProgress() {
 }
 
 function cfgNow() {
+  const provider = $("#provider").value;
   return {
-    provider: $("#provider").value,
+    provider,
     lang: $("#lang").value,
-    apiKey: $("#apiKey").value.trim(),
+    key: provider === "google" ? $("#gKey").value.trim()
+       : provider === "azure"  ? $("#aKey").value.trim()
+       : $("#apiKey").value.trim(),
+    region: $("#aRegion").value.trim(),
     model: $("#model").value,
     voice: $("#voice").value,
     instructions: $("#instructions").value.trim(),
@@ -870,7 +1038,9 @@ function cfgNow() {
 }
 
 async function segCacheKey(text, cfg) {
-  return "v1|" + cfg.model + "|" + cfg.voice + "|" + cfg.speed + "|" + effectiveInstructions(cfg) + "|" + await sha1(text);
+  // model 只對 OpenAI 有意義（Google／Azure 的模型內含在音色名）
+  const model = cfg.provider === "openai" ? cfg.model : "";
+  return "v2|" + cfg.provider + "|" + model + "|" + cfg.voice + "|" + cfg.speed + "|" + effectiveInstructions(cfg) + "|" + await sha1(text);
 }
 
 // 取得某段的可播放 URL（含快取與預抓去重）
@@ -882,7 +1052,7 @@ async function getSegmentUrl(i) {
   let blob = null;
   if (cfg.useCache) blob = await cacheGet(key);
   if (!blob) {
-    blob = await synthOpenAI(text, cfg);
+    blob = await PROVIDERS[cfg.provider].synth(text, cfg);
     if (cfg.useCache) cachePut(key, blob);
   }
   const url = URL.createObjectURL(blob);
@@ -893,7 +1063,7 @@ async function getSegmentUrl(i) {
 function prefetch(i) {
   if (i < 0 || i >= State.segments.length) return;
   if (State.blobUrls.has(i) || State.prefetching.has(i)) return;
-  if (cfgNow().provider !== "openai") return;
+  if (cfgNow().provider === "browser") return;
   State.prefetching.add(i);
   getSegmentUrl(i).catch(() => {}).finally(() => State.prefetching.delete(i));
 }
@@ -977,7 +1147,8 @@ async function playIndex(i) {
   }
 
   // 雲端模式
-  if (!cfg.apiKey) { stopAll(); toast("請先在「語音設定」填入 OpenAI API Key", true); $("#settings").open = true; return; }
+  if (!cfg.key) { stopAll(); toast(`請先在「語音設定」填入 ${PROVIDERS[cfg.provider].label} 的 API Key`, true); $("#settings").open = true; return; }
+  if (cfg.provider === "azure" && !cfg.region) { stopAll(); toast("請填 Azure region（例如 eastasia）", true); $("#settings").open = true; return; }
   setStatus("loading", "合成中");
   try {
     const url = await getSegmentUrl(i);
@@ -1134,7 +1305,8 @@ async function loadText(raw, title, plain) {
     toast(resumeAt > 0
       ? `上次聽到第 ${resumeAt + 1} 段，按播放從那裡繼續`
       : `已切成 ${State.segments.length} 段，按播放開始`);
-    if (cfgNow().provider === "openai" && cfgNow().apiKey) prefetch(resumeAt > 0 ? resumeAt : 0);
+    const c0 = cfgNow();
+    if (c0.provider !== "browser" && c0.key) prefetch(resumeAt > 0 ? resumeAt : 0);
   }
 }
 
@@ -1265,17 +1437,12 @@ SKEYS.forEach(k => {
 });
 $("#speed").addEventListener("input", () => { $("#speedVal").textContent = parseFloat($("#speed").value).toFixed(2) + "×"; });
 $("#segLen").addEventListener("input", () => { $("#segLenVal").textContent = $("#segLen").value; });
-$("#provider").addEventListener("change", () => {
-  const p = $("#provider").value;
-  $("#openaiFields").hidden = p !== "openai";
-  $("#browserFields").hidden = p !== "browser";
-});
-$("#model").addEventListener("change", () => {
-  $("#instructionsField").style.display = $("#model").value === "gpt-4o-mini-tts" ? "" : "none";
-});
+$("#provider").addEventListener("change", () => { updateProviderUI(); saveSettings(); });
+$("#model").addEventListener("change", () => { updateProviderUI(); rememberPrefs(); });
+$("#voice").addEventListener("change", rememberPrefs);
 $("#clearCacheBtn").addEventListener("click", async () => { await cacheClear(); toast("已清空語音快取"); });
-$("#gender").addEventListener("change", () => { filterOpenAIVoices(); loadBrowserVoices(); saveSettings(); });
-$("#lang").addEventListener("change", () => { loadBrowserVoices(); saveSettings(); });
+$("#gender").addEventListener("change", () => { filterVoices(); loadBrowserVoices(); saveSettings(); });
+$("#lang").addEventListener("change", () => { filterVoices(); loadBrowserVoices(); saveSettings(); });
 
 // 瀏覽器語音清單（依語系＋聲色篩選）
 function loadBrowserVoices() {
@@ -1337,15 +1504,11 @@ if ("mediaSession" in navigator) {
 })();
 
 /* ============ 啟動 ============ */
-filterOpenAIVoices();   // 先建滿音色清單，loadSettings 才能還原已存的 voice
 loadSettings();
-filterOpenAIVoices();   // 再依還原後的聲色重篩
+updateProviderUI();     // 依還原後的引擎顯示欄位＋重建音色清單
 if ("speechSynthesis" in window) loadBrowserVoices();
 $("#speedVal").textContent = parseFloat($("#speed").value).toFixed(2) + "×";
 $("#segLenVal").textContent = $("#segLen").value;
-$("#openaiFields").hidden = $("#provider").value !== "openai";
-$("#browserFields").hidden = $("#provider").value !== "browser";
-$("#instructionsField").style.display = $("#model").value === "gpt-4o-mini-tts" ? "" : "none";
 updateUI();
 renderLibrary();
 </script>
