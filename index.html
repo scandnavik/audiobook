@@ -283,6 +283,7 @@
           <option value="openai">OpenAI（雲端高音質，需 API key）</option>
           <option value="google">Google Cloud（每月 100 萬字元免費，需 API key）</option>
           <option value="azure">Azure（台灣腔音色最齊，需 key＋region）</option>
+          <option value="gemini">Gemini（AI Studio key 直接用，有免費層）</option>
           <option value="browser">瀏覽器內建（免費，免 key）</option>
         </select>
       </div>
@@ -308,7 +309,7 @@
           </select>
         </div>
       </div>
-      <div class="hint">語系與聲色會篩選下面的音色清單。Google／Azure 直接有各語系專屬音色；OpenAI 的口音靠語氣指示（僅 gpt-4o-mini-tts）；瀏覽器引擎篩系統語音。</div>
+      <div class="hint">語系與聲色會篩選下面的音色清單。Google／Azure 有各語系專屬音色；OpenAI／Gemini 的音色多語通用、自動跟著文本語言（OpenAI 口音可靠語氣指示）；瀏覽器引擎篩系統語音。</div>
 
       <div id="cloudFields">
         <div class="field" data-p="openai">
@@ -319,7 +320,12 @@
         <div class="field" data-p="google">
           <label>Google Cloud API Key（只存在本機，不會上傳）</label>
           <input type="password" id="gKey" placeholder="AIza..." autocomplete="off" />
-          <div class="hint">GCP 主控台啟用 Cloud Text-to-Speech API 後建立 API key。每月前 100 萬字元免費（Wavenet／Standard 到 400 萬），一般聽量全程免費。</div>
+          <div class="hint">GCP 主控台啟用 Cloud Text-to-Speech API 後建立 API key（⚠️ AI Studio 的 key 不能用在這裡，要用請選 Gemini 引擎）。每月前 100 萬字元免費（Wavenet／Standard 到 400 萬），一般聽量全程免費。</div>
+        </div>
+        <div class="field" data-p="gemini">
+          <label>Gemini API Key（AI Studio 取得，只存在本機）</label>
+          <input type="password" id="gemKey" placeholder="AIza..." autocomplete="off" />
+          <div class="hint">aistudio.google.com 免費取得。有免費層（限流）；付費按音訊時長計費，中文長書比按字計費的引擎貴，適合試聽與輕量使用。</div>
         </div>
         <div data-p="azure">
           <div class="field-row">
@@ -335,13 +341,9 @@
           <div class="hint">Azure 入口網站建 Speech 資源後拿 key 與 region（台灣用戶常用 eastasia）。</div>
         </div>
         <div class="field-row">
-          <div class="field" data-p="openai">
+          <div class="field" id="modelField">
             <label>模型</label>
-            <select id="model">
-              <option value="gpt-4o-mini-tts">gpt-4o-mini-tts（最新，可給語氣）</option>
-              <option value="tts-1-hd">tts-1-hd（高音質）</option>
-              <option value="tts-1">tts-1（最快）</option>
-            </select>
+            <select id="model"></select>
           </div>
           <div class="field">
             <label>音色</label>
@@ -446,7 +448,7 @@ async function sha1(str) {
 }
 
 /* ============ 設定持久化 ============ */
-const SKEYS = ["provider","lang","gender","apiKey","gKey","aKey","aRegion","model","voice","instructions","speed","segLen","skipCode","useCache","browserVoice"];
+const SKEYS = ["provider","lang","gender","apiKey","gKey","aKey","aRegion","gemKey","model","voice","instructions","speed","segLen","skipCode","useCache","browserVoice"];
 function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem("shuoshu.settings") || "{}");
@@ -798,6 +800,17 @@ const GOOGLE_VOICES = [
   { id: "ko-KR-Neural2-A",   label: "韓文女聲 A（Neural2）",   g: "f", lang: "ko" },
   { id: "ko-KR-Neural2-C",   label: "韓文男聲 C（Neural2）",   g: "m", lang: "ko" },
 ];
+// Gemini TTS 音色（多語通用，自動跟文本語言）
+const GEMINI_VOICES = [
+  { id: "Kore",   label: "Kore（堅定女聲）",   g: "f" },
+  { id: "Zephyr", label: "Zephyr（明亮女聲）", g: "f" },
+  { id: "Leda",   label: "Leda（年輕女聲）",   g: "f" },
+  { id: "Aoede",  label: "Aoede（輕快女聲）",  g: "f" },
+  { id: "Charon", label: "Charon（沉穩男聲）", g: "m" },
+  { id: "Puck",   label: "Puck（活潑男聲）",   g: "m" },
+  { id: "Orus",   label: "Orus（堅定男聲）",   g: "m" },
+  { id: "Fenrir", label: "Fenrir（激昂男聲）", g: "m" },
+];
 // Azure neural 音色
 const AZURE_VOICES = [
   { id: "zh-TW-HsiaoChenNeural", label: "曉臻（台灣女聲）",   g: "f", lang: "zh-TW" },
@@ -872,11 +885,24 @@ function filterVoices() {
     sel.appendChild(o);
   });
   sel.value = list.some(v => v.id === saved) ? saved : list[0].id;
+}
 
-  if (p === "openai") {
-    const savedM = (providerPrefs()[p] || {}).model;
-    if (savedM && [...$("#model").options].some(o => o.value === savedM)) $("#model").value = savedM;
-  }
+// 依引擎重建模型清單（沒有 models 的引擎隱藏模型欄）
+function rebuildModels() {
+  const p = $("#provider").value;
+  const conf = PROVIDERS[p];
+  const has = !!(conf && conf.models);
+  $("#modelField").hidden = !has;
+  if (!has) return;
+  const sel = $("#model");
+  const saved = (providerPrefs()[p] || {}).model || sel.value;
+  sel.innerHTML = "";
+  conf.models.forEach(m => {
+    const o = document.createElement("option");
+    o.value = m.id; o.textContent = m.label;
+    sel.appendChild(o);
+  });
+  sel.value = conf.models.some(m => m.id === saved) ? saved : conf.models[0].id;
 }
 
 // 依所選引擎顯示對應欄位
@@ -886,6 +912,7 @@ function updateProviderUI() {
   $("#browserFields").hidden = p !== "browser";
   $$("#cloudFields [data-p]").forEach(el => { el.hidden = el.dataset.p !== p; });
   if (p !== "browser") {
+    rebuildModels();
     filterVoices();
     $("#instructionsField").hidden = !(p === "openai" && $("#model").value === "gpt-4o-mini-tts");
   }
@@ -985,11 +1012,81 @@ async function synthAzureOne(text, cfg) {
   return await resp.blob();
 }
 
-// Provider 註冊表：加新引擎＝加一筆資料＋一個 synthXxxOne()
+// Gemini TTS：generateContent 回 base64 PCM（24kHz 16-bit mono），要包 WAV 頭才能播
+function pcmToWav(pcmBytes, sampleRate) {
+  const dataLen = pcmBytes.length;
+  const buf = new ArrayBuffer(44 + dataLen);
+  const dv = new DataView(buf);
+  const wstr = (off, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); };
+  wstr(0, "RIFF"); dv.setUint32(4, 36 + dataLen, true); wstr(8, "WAVE");
+  wstr(12, "fmt "); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, sampleRate, true); dv.setUint32(28, sampleRate * 2, true);
+  dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  wstr(36, "data"); dv.setUint32(40, dataLen, true);
+  new Uint8Array(buf, 44).set(pcmBytes);
+  return new Blob([buf], { type: "audio/wav" });
+}
+
+async function synthGeminiOne(text, cfg) {
+  const body = {
+    contents: [{ parts: [{ text }] }],
+    generationConfig: {
+      responseModalities: ["AUDIO"],
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: cfg.voice } } },
+    },
+  };
+  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${cfg.model}:generateContent?key=${encodeURIComponent(cfg.key)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    let msg = resp.status + " " + resp.statusText;
+    try { const j = await resp.json(); if (j.error?.message) msg = j.error.message; } catch (e) {}
+    throw new Error("Gemini: " + msg);
+  }
+  const j = await resp.json();
+  const part = j.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+  if (!part) throw new Error("Gemini: 回應裡沒有音訊（可能被安全過濾或模型不支援 TTS）");
+  const rate = parseInt((/rate=(\d+)/.exec(part.inlineData.mimeType || "") || [])[1] || "24000", 10);
+  const bin = atob(part.inlineData.data);
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return { pcm: u8, rate };
+}
+
+// WAV 不能像 MP3 直接串接，分塊時合併 PCM 再包一次頭
+async function synthGemini(text, cfg) {
+  const chunks = chunkForProvider(text, 4000);
+  const parts = [];
+  for (const c of chunks) parts.push(await synthGeminiOne(c, cfg));
+  const merged = new Uint8Array(parts.reduce((a, p) => a + p.pcm.length, 0));
+  let off = 0;
+  for (const p of parts) { merged.set(p.pcm, off); off += p.pcm.length; }
+  return pcmToWav(merged, parts[0].rate);
+}
+
+// Provider 註冊表：加新引擎＝加一筆資料＋一個 synthXxxOne()；models 為 null 時不顯示模型欄
 const PROVIDERS = {
-  openai: { label: "OpenAI",       voices: OPENAI_VOICES, synth: (t, c) => synthChunked(t, c, 4000, synthOpenAIOne) },
-  google: { label: "Google Cloud", voices: GOOGLE_VOICES, synth: (t, c) => synthChunked(t, c, 1300, synthGoogleOne) },
-  azure:  { label: "Azure",        voices: AZURE_VOICES,  synth: (t, c) => synthChunked(t, c, 1800, synthAzureOne) },
+  openai: {
+    label: "OpenAI", voices: OPENAI_VOICES,
+    models: [
+      { id: "gpt-4o-mini-tts", label: "gpt-4o-mini-tts（最新，可給語氣）" },
+      { id: "tts-1-hd", label: "tts-1-hd（高音質）" },
+      { id: "tts-1", label: "tts-1（最快）" },
+    ],
+    synth: (t, c) => synthChunked(t, c, 4000, synthOpenAIOne),
+  },
+  google: { label: "Google Cloud", voices: GOOGLE_VOICES, models: null, synth: (t, c) => synthChunked(t, c, 1300, synthGoogleOne) },
+  azure:  { label: "Azure",        voices: AZURE_VOICES,  models: null, synth: (t, c) => synthChunked(t, c, 1800, synthAzureOne) },
+  gemini: {
+    label: "Gemini", voices: GEMINI_VOICES,
+    models: [
+      { id: "gemini-2.5-flash-preview-tts", label: "2.5 Flash TTS（穩定）" },
+      { id: "gemini-3.1-flash-tts-preview", label: "3.1 Flash TTS（最新 preview）" },
+    ],
+    synth: synthGemini,
+  },
 };
 
 /* ============ 播放引擎 ============ */
@@ -1026,6 +1123,7 @@ function cfgNow() {
     lang: $("#lang").value,
     key: provider === "google" ? $("#gKey").value.trim()
        : provider === "azure"  ? $("#aKey").value.trim()
+       : provider === "gemini" ? $("#gemKey").value.trim()
        : $("#apiKey").value.trim(),
     region: $("#aRegion").value.trim(),
     model: $("#model").value,
@@ -1038,9 +1136,11 @@ function cfgNow() {
 }
 
 async function segCacheKey(text, cfg) {
-  // model 只對 OpenAI 有意義（Google／Azure 的模型內含在音色名）
-  const model = cfg.provider === "openai" ? cfg.model : "";
-  return "v2|" + cfg.provider + "|" + model + "|" + cfg.voice + "|" + cfg.speed + "|" + effectiveInstructions(cfg) + "|" + await sha1(text);
+  // model 只對有模型欄的引擎有意義（Google／Azure 的模型內含在音色名）
+  const model = (PROVIDERS[cfg.provider] || {}).models ? cfg.model : "";
+  // Gemini 的語速在播放端調（playbackRate），不影響合成結果，不進 key
+  const spd = cfg.provider === "gemini" ? 1 : cfg.speed;
+  return "v2|" + cfg.provider + "|" + model + "|" + cfg.voice + "|" + spd + "|" + effectiveInstructions(cfg) + "|" + await sha1(text);
 }
 
 // 取得某段的可播放 URL（含快取與預抓去重）
@@ -1154,7 +1254,8 @@ async function playIndex(i) {
     const url = await getSegmentUrl(i);
     if (State.index !== i || !State.playing) return; // 期間被切換
     State.audio.src = url;
-    State.audio.playbackRate = 1; // 語速已在合成端處理
+    // Gemini API 沒有語速參數，改在播放端調（瀏覽器預設保持音高）；其他引擎已在合成端處理
+    State.audio.playbackRate = cfg.provider === "gemini" ? cfg.speed : 1;
     await State.audio.play();
     setStatus("playing", "播放中");
     prefetch(i + 1); // 預抓接下來兩段，段落交界不停頓
