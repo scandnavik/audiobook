@@ -26,3 +26,10 @@ test("空字串不爆炸", () => {
 test("吸附後跳過句首空白", () => {
   assert.deepEqual(snapToSentence("a。 b。", 0.8), { start: 3, end: 5 });
 });
+test("ratio NaN 傳回整段（安全 fallback）", () => {
+  assert.deepEqual(snapToSentence(T, NaN), { start: 0, end: 12 });
+});
+test("連續換行中間的空段回傳 start===end（安全但空）", () => {
+  const r = snapToSentence("a\n\nb", 0.5);
+  assert.equal(r.start, r.end);
+});

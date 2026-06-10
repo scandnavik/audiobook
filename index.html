@@ -980,7 +980,7 @@ function guessGender(v) {
 }
 
 /* ============ 重點筆記:句界吸附 ============ */
-// 把 0-1 的播放比例位置吸附到包含它的整句;句界=。！？!?；;與換行
+// 句界 = 。！？!?；; 與換行（全形半形各一）
 function snapToSentence(text, ratio) {
   if (!text) return { start: 0, end: 0 };
   const ends = "。！？!?；;\n";
