@@ -1006,9 +1006,12 @@ function marksToMarkdown(title, marks, dateStr) {
     if (!groups.has(ch)) groups.set(ch, []);
     groups.get(ch).push(m);
   }
+  const safeTitle = /[:'"#\[\]&*!|>?,]/.test(title)
+    ? '"' + title.replace(/"/g, '\\"') + '"'
+    : title;
   const lines = [
     "---",
-    "title: " + title,
+    "title: " + safeTitle,
     "exported: " + dateStr,
     "marks: " + sorted.length,
     "source: Audiobook｜有聲書",

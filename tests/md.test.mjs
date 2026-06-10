@@ -25,7 +25,19 @@ test("無章節掛在全文下、無筆記不留空行", () => {
   const md = marksToMarkdown("書", [{ segIndex: 0, start: 0, end: 2, text: "重點", note: "", chapterTitle: "" }], "2026-06-10");
   assert.match(md, /## 全文/);
   assert.match(md, /> 重點\n/);
-  assert.doesNotMatch(md, /> 重點\n\n\S+\n\n##/); // 沒筆記就直接接下一塊
+  assert.match(md, /> 重點\n$/); // 沒筆記就直接接下一塊
+});
+
+test("多行筆記保留換行", () => {
+  const md = marksToMarkdown("書",
+    [{ segIndex: 0, start: 0, end: 2, text: "t", note: "行A\n行B", chapterTitle: "" }],
+    "2026-06-10");
+  assert.match(md, /行A\n行B/);
+});
+
+test("title 含冒號時 frontmatter 加引號", () => {
+  const md = marksToMarkdown("Part 1: Begin", [], "2026-06-10");
+  assert.match(md, /title: "Part 1: Begin"/);
 });
 
 test("引文內換行壓成空格", () => {
