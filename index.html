@@ -3,26 +3,28 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#0f1115" />
+<meta name="theme-color" content="#fafaf7" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="有聲書" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" type="image/svg+xml" href="icon.svg" />
 <title>Audiobook｜有聲書</title>
 <style>
   :root {
-    --bg: #0f1115;
-    --bg-elev: #171a21;
-    --bg-elev2: #1f2430;
-    --line: #2a3140;
-    --text: #e7ebf2;
-    --text-dim: #9aa6b8;
-    --accent: #6ea8ff;
-    --accent-press: #4d8cff;
-    --good: #5ad19a;
-    --warn: #ffb56b;
-    --danger: #ff6b6b;
+    /* CIS：Blue 主 60 / Teal 副 30 / Amber 點綴 10，紙色底 */
+    --bg: #fafaf7;
+    --bg-elev: #ffffff;
+    --bg-elev2: #f3f3ef;
+    --line: #e5e5e0;
+    --text: #1a1a1a;
+    --text-dim: #666666;
+    --accent: #004aad;
+    --accent-press: #003a8c;
+    --good: #0097b2;
+    --warn: #9a6700;
+    --danger: #c0392b;
+    --grad: linear-gradient(135deg, #004aad 0%, #0097b2 100%);
     --radius: 14px;
     --tap: 48px;
   }
@@ -109,7 +111,7 @@
     font-size: 15px; font-weight: 600; cursor: pointer; transition: .15s;
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   }
-  .btn-primary { background: var(--accent); color: #08101f; flex: 1; }
+  .btn-primary { background: var(--accent); color: #fff; flex: 1; }
   .btn-primary:active { background: var(--accent-press); }
   .btn-ghost { background: var(--bg-elev2); color: var(--text); }
   .btn:disabled { opacity: .45; cursor: not-allowed; }
@@ -151,7 +153,7 @@
     padding: 12px 14px; cursor: pointer; transition: .12s; position: relative;
     display: flex; gap: 12px; align-items: flex-start;
   }
-  .seg:hover { border-color: #3a4255; }
+  .seg:hover { border-color: #c9c9c2; }
   .seg .num {
     flex: 0 0 auto; font-size: 12px; color: var(--text-dim);
     font-variant-numeric: tabular-nums; min-width: 26px; padding-top: 2px;
@@ -171,7 +173,7 @@
     padding: 4px 4px 4px 14px; display: flex; align-items: center; gap: 8px;
     cursor: pointer; transition: .12s;
   }
-  .lib-item:hover { border-color: #3a4255; }
+  .lib-item:hover { border-color: #c9c9c2; }
   .lib-main { flex: 1; min-width: 0; padding: 8px 0; }
   .lib-title {
     font-size: 14.5px; font-weight: 600; color: var(--text);
@@ -183,7 +185,7 @@
   /* 底部播放列 */
   .player {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
-    background: linear-gradient(180deg, rgba(15,17,21,.6), var(--bg) 30%);
+    background: linear-gradient(180deg, rgba(250,250,247,.65), var(--bg) 30%);
     backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     border-top: 1px solid var(--line);
     padding: 12px 16px calc(env(safe-area-inset-bottom) + 12px);
@@ -191,14 +193,14 @@
   }
   .player.show { transform: translateY(0); }
   .progress { height: 4px; background: var(--bg-elev2); border-radius: 4px; overflow: hidden; margin-bottom: 10px; }
-  .progress > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+  .progress > i { display: block; height: 100%; width: 0; background: var(--grad); transition: width .25s; }
   .now { font-size: 13px; color: var(--text-dim); margin-bottom: 10px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .now b { color: var(--text); font-weight: 600; }
   .controls { display: flex; align-items: center; justify-content: center; gap: 8px; }
   .controls .icon-btn { color: var(--text); }
   .controls .play {
-    width: 60px; height: 60px; border-radius: 50%; background: var(--accent); color: #08101f;
+    width: 60px; height: 60px; border-radius: 50%; background: var(--accent); color: #fff;
   }
   .controls .play:hover { background: var(--accent-press); }
   .controls .play svg { width: 28px; height: 28px; }
@@ -216,7 +218,7 @@
     background: var(--bg-elev2); color: var(--text); border: 1px solid var(--line);
     padding: 12px 18px; border-radius: 12px; font-size: 14px; z-index: 50;
     opacity: 0; transition: .25s; max-width: 90vw; text-align: center;
-    box-shadow: 0 8px 30px rgba(0,0,0,.4);
+    box-shadow: 0 8px 30px rgba(0,0,0,.14);
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   .toast.err { border-color: var(--danger); }
@@ -225,7 +227,7 @@
 <body>
 
 <header>
-  <svg class="logo" viewBox="0 0 24 24" fill="none" stroke="#6ea8ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <svg class="logo" viewBox="0 0 24 24" fill="none" stroke="#004aad" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M3 5.5C3 4.7 3.7 4 4.5 4H11v15H4.5C3.7 19 3 18.3 3 17.5V5.5Z"/>
     <path d="M21 5.5C21 4.7 20.3 4 19.5 4H13v15h6.5c.8 0 1.5-.7 1.5-1.5V5.5Z"/>
     <path d="M16.5 9.5a2 2 0 0 1 0 4"/>
