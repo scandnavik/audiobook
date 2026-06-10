@@ -275,6 +275,9 @@
     <div class="sub">EPUB / Markdown 朗讀 · 雲端高音質</div>
   </div>
   <div class="spacer"></div>
+  <button class="icon-btn" id="themeBtn" title="切換外觀">
+    <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></svg>
+  </button>
   <button class="icon-btn" id="installBtn" title="加到主畫面" hidden>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 21h14"/></svg>
   </button>
@@ -1590,6 +1593,12 @@ $("#provider").addEventListener("change", () => { updateProviderUI(); saveSettin
 $("#model").addEventListener("change", () => { updateProviderUI(); rememberPrefs(); });
 $("#voice").addEventListener("change", rememberPrefs);
 $("#clearCacheBtn").addEventListener("click", async () => { await cacheClear(); toast("已清空語音快取"); });
+const THEME_ICONS = {
+  auto:  '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18Z" fill="currentColor" stroke="none"/>',
+  light: '<circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"/>',
+  dark:  '<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"/>',
+};
+const THEME_LABELS = { auto: "外觀：跟隨系統", light: "外觀：淺色", dark: "外觀：深色" };
 function applyTheme() {
   const t = $("#theme").value;
   if (t === "auto") delete document.documentElement.dataset.theme;
@@ -1597,8 +1606,18 @@ function applyTheme() {
   const dark = t === "dark" || (t === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.content = dark ? "#12161d" : "#fafaf7";
+  $("#themeIcon").innerHTML = THEME_ICONS[t] || THEME_ICONS.auto;
+  $("#themeBtn").title = THEME_LABELS[t] || THEME_LABELS.auto;
 }
 $("#theme").addEventListener("change", () => { applyTheme(); saveSettings(); });
+$("#themeBtn").addEventListener("click", () => {
+  const order = ["auto", "light", "dark"];
+  const next = order[(order.indexOf($("#theme").value) + 1) % order.length];
+  $("#theme").value = next;
+  applyTheme();
+  saveSettings();
+  toast(THEME_LABELS[next]);
+});
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 $("#gender").addEventListener("change", () => { filterVoices(); loadBrowserVoices(); saveSettings(); });
 $("#lang").addEventListener("change", () => { filterVoices(); loadBrowserVoices(); saveSettings(); });
