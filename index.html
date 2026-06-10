@@ -147,6 +147,7 @@
   /* 段落清單 */
   .seg-meta { display: flex; align-items: center; justify-content: space-between;
     margin: 18px 4px 10px; font-size: 13px; color: var(--text-dim); }
+  .seg-meta[hidden] { display: none; }
   .seg-list { display: flex; flex-direction: column; gap: 8px; }
   .seg {
     border: 1px solid var(--line); background: var(--bg-elev); border-radius: 12px;
@@ -245,7 +246,7 @@
 <main>
   <!-- 輸入切換 -->
   <div class="tabs">
-    <button class="tab active" data-tab="file">選 .md 檔</button>
+    <button class="tab active" data-tab="file">選檔</button>
     <button class="tab" data-tab="paste">貼上文字</button>
     <button class="tab" data-tab="lib">書庫</button>
   </div>
