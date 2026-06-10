@@ -8,7 +8,8 @@
 
 **Bug 修復**
 - 修「切換段落／換書後，按播放還是舊段落」：續播分支原本只看 audio 裡有沒有音檔，不比對它屬於哪一段。合成中誤按暫停、換書、合成失敗三條路徑都會讓段號前進而音檔留舊段。現在 `srcIndex` 守門比對不符就重新取段，換書時並把殘留音檔卸載
-- 回歸測試 `tests/resume.test.mjs`＋調速 `tests/rate.test.mjs`，全套 37 條
+- 修 `gpt-4o-mini-tts` 報「over the maximum input limit of 2000 tokens」：該模型上限是 2000 token 非 4096 字元（中文一字約 1.4–2 token，2500 字的段必爆），分塊上限對此模型壓到 1000 字元、逐塊合成串 MP3；`tts-1` 系列維持 4000
+- 回歸測試 `tests/resume.test.mjs`＋調速 `tests/rate.test.mjs`＋分塊上限 `tests/chunklimit.test.mjs`，全套 40 條
 
 ### v1.0 — 重點筆記＋整本匯出音檔（2026-06-10）
 
