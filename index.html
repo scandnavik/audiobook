@@ -1277,6 +1277,11 @@ function chunkForProvider(text, maxChars) {
   if (buf) chunks.push(buf);
   return chunks;
 }
+// gpt-4o-mini-tts 輸入上限是 2000 token（中文一字約 1.4–2 token），1000 字元連最壞情況都壓得住；
+// tts-1 系列上限 4096 字元，留 4000
+function openaiChunkLimit(model) {
+  return model === "gpt-4o-mini-tts" ? 1000 : 4000;
+}
 async function synthChunked(text, cfg, maxChars, synthOne) {
   const chunks = chunkForProvider(text, maxChars);
   const blobs = [];
@@ -1421,7 +1426,7 @@ const PROVIDERS = {
       { id: "tts-1-hd", label: "tts-1-hd（高音質）" },
       { id: "tts-1", label: "tts-1（最快）" },
     ],
-    synth: (t, c) => synthChunked(t, c, 4000, synthOpenAIOne),
+    synth: (t, c) => synthChunked(t, c, openaiChunkLimit(c.model), synthOpenAIOne),
   },
   google: { label: "Google Cloud", voices: GOOGLE_VOICES, models: null, synth: (t, c) => synthChunked(t, c, 1300, synthGoogleOne) },
   azure:  { label: "Azure",        voices: AZURE_VOICES,  models: null, synth: (t, c) => synthChunked(t, c, 1800, synthAzureOne) },
