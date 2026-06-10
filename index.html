@@ -268,6 +268,24 @@
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   .toast.err { border-color: var(--danger); }
+
+  /* modal（重點編輯／匯出共用） */
+  .modal-back {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, .45); z-index: 70;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-back[hidden] { display: none; }
+  .modal {
+    background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius);
+    max-width: 480px; width: 100%; max-height: 80vh; overflow-y: auto; padding: 18px;
+  }
+  .modal h3 { margin: 0 0 10px; font-size: 16px; }
+  .modal .quote {
+    border-left: 3px solid var(--warn); background: var(--bg-elev2);
+    padding: 8px 12px; border-radius: 6px; font-size: 14px; color: var(--text-dim);
+    max-height: 110px; overflow-y: auto; margin-bottom: 12px;
+  }
+  #selMarkBtn { position: fixed; z-index: 60; min-height: 40px; padding: 0 14px; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -481,6 +499,21 @@
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5l11 7-11 7z"/></svg>
     </button>
     <span class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">待機</span></span>
+  </div>
+</div>
+
+<button class="btn btn-primary" id="selMarkBtn" hidden>標重點</button>
+
+<div class="modal-back" id="markModalBack" hidden>
+  <div class="modal">
+    <h3>重點</h3>
+    <div class="quote" id="markQuote"></div>
+    <textarea id="markNote" placeholder="寫一點筆記（可留空）……" style="min-height:100px"></textarea>
+    <div class="row">
+      <button class="btn btn-primary" id="markSaveBtn">儲存</button>
+      <button class="btn btn-ghost" id="markDelBtn" style="color:var(--danger)">刪除重點</button>
+      <button class="btn btn-ghost" id="markCloseBtn">關閉</button>
+    </div>
   </div>
 </div>
 
@@ -1665,6 +1698,107 @@ function renderSegments() {
   $("#segMeta").hidden = State.segments.length === 0;
   $("#emptyState").hidden = State.segments.length > 0;
 }
+
+function renderMarksPanel() {} // Task 11 實作
+
+/* ============ 重點筆記:建立與編輯 ============ */
+function chapterTitleForSeg(i) {
+  let t = "";
+  for (const c of State.chapters) { if (c.index <= i) t = c.title; else break; }
+  return t;
+}
+
+async function addMark(segIndex, start, end, fromTap) {
+  if (!State.docId) { toast("先載入文件才能畫重點", true); return; }
+  const text = State.segments[segIndex].slice(start, end).trim();
+  if (!text) return;
+  if (State.marks.some(m => m.segIndex === segIndex && m.start === start && m.end === end)) {
+    toast("這裡已經標過了"); return;
+  }
+  const m = {
+    docId: State.docId, segIndex, start, end, text,
+    note: "", chapterTitle: chapterTitleForSeg(segIndex), createdAt: Date.now(),
+  };
+  try { m.id = await marksAdd(m); } catch (e) { toast("儲存重點失敗", true); return; }
+  State.marks.push(m);
+  rerenderSeg(segIndex);
+  renderMarksPanel();
+  toast((fromTap ? "已標記：" : "已標重點：") + text.slice(0, 18) + (text.length > 18 ? "…" : ""));
+}
+
+let editingMark = null;
+function openMarkModal(m) {
+  editingMark = m;
+  $("#markQuote").textContent = m.text;
+  $("#markNote").value = m.note || "";
+  $("#markModalBack").hidden = false;
+}
+$("#markSaveBtn").addEventListener("click", async () => {
+  if (!editingMark) return;
+  editingMark.note = $("#markNote").value.trim();
+  await marksPut(editingMark);
+  rerenderSeg(editingMark.segIndex);
+  renderMarksPanel();
+  $("#markModalBack").hidden = true;
+  toast("已儲存");
+});
+$("#markDelBtn").addEventListener("click", async () => {
+  if (!editingMark) return;
+  await marksDelete(editingMark.id);
+  State.marks = State.marks.filter(x => x.id !== editingMark.id);
+  rerenderSeg(editingMark.segIndex);
+  renderMarksPanel();
+  $("#markModalBack").hidden = true;
+  toast("已刪除重點");
+});
+$("#markCloseBtn").addEventListener("click", () => { $("#markModalBack").hidden = true; });
+$("#markModalBack").addEventListener("click", (e) => { if (e.target.id === "markModalBack") $("#markModalBack").hidden = true; });
+
+/* 選取偵測 → 浮動「標重點」鈕 */
+function selectionInSeg() {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+  const range = sel.getRangeAt(0);
+  const owner = (n) => (n.nodeType === 3 ? n.parentElement : n)?.closest(".seg .txt") || null;
+  const txtEl = owner(range.startContainer);
+  if (!txtEl || txtEl !== owner(range.endContainer)) return null; // 限單段內
+  const i = parseInt(txtEl.closest(".seg").dataset.i, 10);
+  const offsetOf = (node, off) => {
+    let total = 0;
+    const walker = document.createTreeWalker(txtEl, NodeFilter.SHOW_TEXT);
+    let n;
+    while ((n = walker.nextNode())) {
+      if (n === node) return total + off;
+      total += n.textContent.length;
+    }
+    return total;
+  };
+  const start = offsetOf(range.startContainer, range.startOffset);
+  const end = offsetOf(range.endContainer, range.endOffset);
+  return end > start ? { i, start, end } : null;
+}
+
+let selTimer = null;
+document.addEventListener("selectionchange", () => {
+  clearTimeout(selTimer);
+  selTimer = setTimeout(() => {
+    const hit = selectionInSeg();
+    const btn = $("#selMarkBtn");
+    if (!hit) { btn.hidden = true; return; }
+    const rect = window.getSelection().getRangeAt(0).getBoundingClientRect();
+    btn.style.left = Math.max(8, Math.min(window.innerWidth - 96, rect.left + rect.width / 2 - 44)) + "px";
+    btn.style.top = Math.max(8, rect.top - 48) + "px";
+    btn._hit = hit;
+    btn.hidden = false;
+  }, 200);
+});
+$("#selMarkBtn").addEventListener("click", () => {
+  const h = $("#selMarkBtn")._hit;
+  $("#selMarkBtn").hidden = true;
+  if (h) addMark(h.i, h.start, h.end, false);
+  const sel = window.getSelection();
+  if (sel) sel.removeAllRanges();
+});
 
 async function loadText(raw, title, plain) {
   if (!raw || !raw.trim()) { toast("沒有內容可載入", true); return; }
