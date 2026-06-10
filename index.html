@@ -350,11 +350,11 @@
       </div>
 
       <div class="field">
-        <label>每段最長字數 <span class="range-val" id="segLenVal">1500</span></label>
+        <label>每段最長字數 <span class="range-val" id="segLenVal">2500</span></label>
         <div class="range-wrap">
-          <input type="range" id="segLen" min="300" max="3000" step="100" value="1500" />
+          <input type="range" id="segLen" min="300" max="4000" step="100" value="2500" />
         </div>
-        <div class="hint">字數越大、請求次數越少（省錢），但首段等待越久。OpenAI 單次上限約 4000 字。</div>
+        <div class="hint">段落會自動打包到接近此長度才送合成——數字越大朗讀越連貫、接縫越少，但首段等待越久。OpenAI 單次上限約 4000 字，聽整本書建議 2500–4000。</div>
       </div>
 
       <div class="field">
@@ -485,28 +485,39 @@ function cleanMarkdown(md, skipCode) {
   return t.trim();
 }
 
-// 把長文切成朗讀段：先依空行分段，過長的再依句子切
+// 把長文切成朗讀段：先依空行分段、超長段依句子拆，最後貪婪打包成接近 maxLen 的連續大塊
+// （一段 = 一次 TTS 請求 = 一個音檔；塊越大接縫越少，朗讀越連貫）
 function splitIntoSegments(text, maxLen) {
   const paras = text.split(/\n{2,}/).map(p => p.replace(/\n/g, " ").trim()).filter(Boolean);
-  const out = [];
+
+  // 第一步：把超長段落拆成不超過 maxLen 的句級 pieces
+  const pieces = [];
   for (const p of paras) {
-    if (p.length <= maxLen) { out.push(p); continue; }
-    // 依句末標點切句
+    if (p.length <= maxLen) { pieces.push(p); continue; }
     const sentences = p.match(/[^。！？!?\.]+[。！？!?\.]+|[^。！？!?\.]+$/g) || [p];
     let buf = "";
     for (const s of sentences) {
-      if ((buf + s).length > maxLen && buf) { out.push(buf.trim()); buf = ""; }
+      if ((buf + s).length > maxLen && buf) { pieces.push(buf.trim()); buf = ""; }
       if (s.length > maxLen) {
         // 單句仍超長，硬切
         let rest = s;
-        while (rest.length > maxLen) { out.push(rest.slice(0, maxLen).trim()); rest = rest.slice(maxLen); }
+        while (rest.length > maxLen) { pieces.push(rest.slice(0, maxLen).trim()); rest = rest.slice(maxLen); }
         buf += rest;
       } else {
         buf += s;
       }
     }
-    if (buf.trim()) out.push(buf.trim());
+    if (buf.trim()) pieces.push(buf.trim());
   }
+
+  // 第二步：貪婪打包——短段落（含標題）併進同一塊，換行保留給 TTS 當自然停頓
+  const out = [];
+  let chunk = "";
+  for (const piece of pieces) {
+    if (chunk && (chunk.length + piece.length + 1) > maxLen) { out.push(chunk); chunk = piece; }
+    else chunk = chunk ? chunk + "\n" + piece : piece;
+  }
+  if (chunk) out.push(chunk);
   return out;
 }
 
@@ -802,7 +813,8 @@ async function playIndex(i) {
     State.audio.playbackRate = 1; // 語速已在合成端處理
     await State.audio.play();
     setStatus("playing", "播放中");
-    prefetch(i + 1); // 預抓下一段
+    prefetch(i + 1); // 預抓接下來兩段，段落交界不停頓
+    prefetch(i + 2);
   } catch (e) {
     State.playing = false;
     setStatus("", "錯誤");
