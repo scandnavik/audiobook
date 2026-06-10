@@ -1101,6 +1101,30 @@ function marksToMarkdown(title, marks, dateStr) {
   return lines.join("\n") + "\n";
 }
 
+// 檔名清洗(Windows 非法字元)＋匯出前估算
+function sanitizeFilename(name) {
+  const cleaned = (name || "").replace(/[\\/:*?"<>|]/g, "_").replace(/\s+/g, " ").trim().slice(0, 60);
+  return cleaned || "未命名";
+}
+
+// 費率假設(2026-06 查證,USD):按字計費 $/百萬字元;按時計費 $0.015/分鐘音訊。
+// 中文 ~3.3 字/秒;MP3 ~0.5 MB/分、WAV(24kHz 16-bit mono) ~2.9 MB/分。
+function exportEstimate(totalChars, cachedChars, provider, model) {
+  const newChars = Math.max(0, totalChars - cachedChars);
+  const minutes = totalChars / 3.3 / 60;
+  const newMinutes = newChars / 3.3 / 60;
+  const perM = provider === "openai" ? (model === "tts-1-hd" ? 30 : model === "tts-1" ? 15 : null)
+             : provider === "google" ? 4
+             : provider === "azure" ? 15
+             : null;
+  let usd = null;
+  if (perM !== null) usd = newChars / 1e6 * perM;
+  else if (provider === "openai" || provider === "gemini") usd = newMinutes * 0.015; // mini-tts / gemini 按時
+  const sizeMB = (provider === "gemini" ? 2.9 : 0.5) * minutes;
+  const timeMin = Math.ceil(newChars / 2500 * 3 / 60 / 2); // 段×3 秒 ÷ 併發 2
+  return { newChars, minutes, usd, sizeMB, timeMin };
+}
+
 /* ============ 雲端 TTS 合成（provider 插座）============ */
 // 各家單次請求長度上限不同（Google 5000 bytes、Azure 10 分鐘音訊），
 // 超限時內部依句切塊、逐塊合成後串接 MP3（MPEG frame 自含，直接串接可播）
@@ -1201,6 +1225,8 @@ function pcmToWav(pcmBytes, sampleRate) {
 }
 
 // 把多個 WAV(各自帶 44-byte 頭)剝頭合併成單一 PCM;章級組裝用
+// precondition: wavBytesList.length >= 1（呼叫端保證至少一段）
+// 所有 WAV 視為同取樣率，rate 取第一個（Gemini 同模型輸出固定）
 function mergeWavPcm(wavBytesList) {
   const first = wavBytesList[0];
   const rate = new DataView(first.buffer, first.byteOffset + 24, 4).getUint32(0, true);
