@@ -1,4 +1,4 @@
-/* 說書機 App 殼快取：只快取同網域靜態檔，TTS API 請求一律放行 */
+/* Audiobook｜有聲書 App 殼快取：只快取同網域靜態檔，TTS API 請求一律放行 */
 const CACHE = "audiobook-v1";
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./icon.svg"];
 

@@ -6,10 +6,10 @@
 <meta name="theme-color" content="#0f1115" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="說書機" />
+<meta name="apple-mobile-web-app-title" content="有聲書" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" type="image/svg+xml" href="icon.svg" />
-<title>說書機 · EPUB / Markdown 有聲書</title>
+<title>Audiobook｜有聲書</title>
 <style>
   :root {
     --bg: #0f1115;
@@ -231,7 +231,7 @@
     <path d="M16.5 9.5a2 2 0 0 1 0 4"/>
   </svg>
   <div>
-    <h1>說書機</h1>
+    <h1>Audiobook｜有聲書</h1>
     <div class="sub">EPUB / Markdown 朗讀 · 雲端高音質</div>
   </div>
   <div class="spacer"></div>
@@ -1213,9 +1213,9 @@ function updateUI() {
   if ("mediaSession" in navigator && State.segments.length) {
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: ch ? ch.title : (State.docTitle || "說書機"),
-        artist: State.docTitle || "說書機",
-        album: "說書機",
+        title: ch ? ch.title : (State.docTitle || "有聲書"),
+        artist: State.docTitle || "有聲書",
+        album: "Audiobook｜有聲書",
       });
     } catch (e) {}
   }

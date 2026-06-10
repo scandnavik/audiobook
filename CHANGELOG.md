@@ -1,4 +1,8 @@
-# 說書機 audiobook — 版本紀錄
+# Audiobook｜有聲書 — 版本紀錄
+
+### 產品更名（2026-06-10）：說書機 → Audiobook｜有聲書
+
+App 標題、manifest（安裝名「有聲書」）、鎖屏顯示、README 全面更名；內部儲存 key（`shuoshu.*`）不變，既有使用者的設定、書庫、快取不受影響。
 
 ### v0.8（2026-06-10）— Gemini TTS 引擎＋電腦端教學
 

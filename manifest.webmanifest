@@ -1,6 +1,6 @@
 {
-  "name": "說書機",
-  "short_name": "說書機",
+  "name": "Audiobook｜有聲書",
+  "short_name": "有聲書",
   "description": "把 Markdown 用文字轉語音唸出來的有聲書播放器",
   "start_url": ".",
   "scope": ".",
