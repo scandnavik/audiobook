@@ -1907,7 +1907,7 @@ async function runExport() {
     }
     const book = sanitizeFilename(State.docTitle || "有聲書");
     if (files.length === 1) {
-      // 無章節書退化單檔直接下載,不打包
+      // 無章節書退化單檔直接下載，不打包
       const ext = files[0].name.slice(files[0].name.lastIndexOf("."));
       const type = ext === ".wav" ? "audio/wav" : "audio/mpeg";
       downloadBlob(new Blob([files[0].data], { type }), book + ext);
