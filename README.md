@@ -1,8 +1,8 @@
-# 說書機 md-audio
+# 說書機 audiobook
 
 把 EPUB／Markdown／純文字用文字轉語音（TTS）唸出來的單檔 PWA——有聲書播放器。書籍首選 `.epub`（內建解析，零依賴），`.md`／`.txt` 備選。
 
-**線上版**：https://scandnavik.github.io/md-audio/
+**線上版**：https://scandnavik.github.io/audiobook/
 
 ## 特色
 
@@ -17,7 +17,7 @@
 
 ## 使用
 
-1. 開 https://scandnavik.github.io/md-audio/ （或本地直接開 `index.html`）
+1. 開 https://scandnavik.github.io/audiobook/ （或本地直接開 `index.html`）
 2. 「語音設定」填入 OpenAI API key（或切到瀏覽器內建引擎免 key 試聽）
 3. 選 `.md`／`.txt` 檔、拖曳或貼上文字 → 載入並切段 → 按播放
 4. 手機瀏覽器選「加到主畫面」即可裝成 App
