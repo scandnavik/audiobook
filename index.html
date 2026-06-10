@@ -25,8 +25,45 @@
     --warn: #9a6700;
     --danger: #c0392b;
     --grad: linear-gradient(135deg, #004aad 0%, #0097b2 100%);
+    --line-strong: #c9c9c2;
+    --player-fade: rgba(250,250,247,.65);
     --radius: 14px;
     --tap: 48px;
+  }
+  /* 深色：CIS 同色相提亮（深底上主色藍對比不足） */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+    --bg: #12161d;
+    --bg-elev: #1a202a;
+    --bg-elev2: #232b38;
+    --line: #2c3442;
+    --text: #e8eaee;
+    --text-dim: #9aa3b2;
+    --accent: #4d8dff;
+    --accent-press: #3a78ec;
+    --good: #2fb6cc;
+    --warn: #ffbd59;
+    --danger: #ff6b6b;
+    --grad: linear-gradient(135deg, #4d8dff 0%, #2fb6cc 100%);
+    --line-strong: #3d4757;
+    --player-fade: rgba(18,22,29,.65);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12161d;
+    --bg-elev: #1a202a;
+    --bg-elev2: #232b38;
+    --line: #2c3442;
+    --text: #e8eaee;
+    --text-dim: #9aa3b2;
+    --accent: #4d8dff;
+    --accent-press: #3a78ec;
+    --good: #2fb6cc;
+    --warn: #ffbd59;
+    --danger: #ff6b6b;
+    --grad: linear-gradient(135deg, #4d8dff 0%, #2fb6cc 100%);
+    --line-strong: #3d4757;
+    --player-fade: rgba(18,22,29,.65);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; height: 100%; }
@@ -154,7 +191,7 @@
     padding: 12px 14px; cursor: pointer; transition: .12s; position: relative;
     display: flex; gap: 12px; align-items: flex-start;
   }
-  .seg:hover { border-color: #c9c9c2; }
+  .seg:hover { border-color: var(--line-strong); }
   .seg .num {
     flex: 0 0 auto; font-size: 12px; color: var(--text-dim);
     font-variant-numeric: tabular-nums; min-width: 26px; padding-top: 2px;
@@ -174,7 +211,7 @@
     padding: 4px 4px 4px 14px; display: flex; align-items: center; gap: 8px;
     cursor: pointer; transition: .12s;
   }
-  .lib-item:hover { border-color: #c9c9c2; }
+  .lib-item:hover { border-color: var(--line-strong); }
   .lib-main { flex: 1; min-width: 0; padding: 8px 0; }
   .lib-title {
     font-size: 14.5px; font-weight: 600; color: var(--text);
@@ -186,7 +223,7 @@
   /* 底部播放列 */
   .player {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
-    background: linear-gradient(180deg, rgba(250,250,247,.65), var(--bg) 30%);
+    background: linear-gradient(180deg, var(--player-fade), var(--bg) 30%);
     backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     border-top: 1px solid var(--line);
     padding: 12px 16px calc(env(safe-area-inset-bottom) + 12px);
@@ -389,6 +426,14 @@
       <div class="field">
         <label><input type="checkbox" id="useCache" checked style="vertical-align:-2px"> 快取已合成語音（重播 / 重開省 API 費用）</label>
       </div>
+      <div class="field">
+        <label>外觀</label>
+        <select id="theme">
+          <option value="auto">跟隨系統</option>
+          <option value="light">淺色</option>
+          <option value="dark">深色</option>
+        </select>
+      </div>
       <div class="row">
         <button class="btn btn-ghost" id="clearCacheBtn">清空語音快取</button>
       </div>
@@ -451,7 +496,7 @@ async function sha1(str) {
 }
 
 /* ============ 設定持久化 ============ */
-const SKEYS = ["provider","lang","gender","apiKey","gKey","aKey","aRegion","gemKey","model","voice","instructions","speed","segLen","skipCode","useCache","browserVoice"];
+const SKEYS = ["theme","provider","lang","gender","apiKey","gKey","aKey","aRegion","gemKey","model","voice","instructions","speed","segLen","skipCode","useCache","browserVoice"];
 function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem("shuoshu.settings") || "{}");
@@ -1545,6 +1590,16 @@ $("#provider").addEventListener("change", () => { updateProviderUI(); saveSettin
 $("#model").addEventListener("change", () => { updateProviderUI(); rememberPrefs(); });
 $("#voice").addEventListener("change", rememberPrefs);
 $("#clearCacheBtn").addEventListener("click", async () => { await cacheClear(); toast("已清空語音快取"); });
+function applyTheme() {
+  const t = $("#theme").value;
+  if (t === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = t;
+  const dark = t === "dark" || (t === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = dark ? "#12161d" : "#fafaf7";
+}
+$("#theme").addEventListener("change", () => { applyTheme(); saveSettings(); });
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 $("#gender").addEventListener("change", () => { filterVoices(); loadBrowserVoices(); saveSettings(); });
 $("#lang").addEventListener("change", () => { filterVoices(); loadBrowserVoices(); saveSettings(); });
 
@@ -1609,6 +1664,7 @@ if ("mediaSession" in navigator) {
 
 /* ============ 啟動 ============ */
 loadSettings();
+applyTheme();
 updateProviderUI();     // 依還原後的引擎顯示欄位＋重建音色清單
 if ("speechSynthesis" in window) loadBrowserVoices();
 $("#speedVal").textContent = parseFloat($("#speed").value).toFixed(2) + "×";
