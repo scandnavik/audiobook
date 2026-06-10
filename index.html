@@ -29,6 +29,7 @@
     --player-fade: rgba(250,250,247,.65);
     --radius: 14px;
     --tap: 48px;
+    --hl: rgba(255, 189, 89, .45);
   }
   /* 深色：CIS 同色相提亮（深底上主色藍對比不足） */
   @media (prefers-color-scheme: dark) {
@@ -47,6 +48,7 @@
     --grad: linear-gradient(135deg, #4d8dff 0%, #2fb6cc 100%);
     --line-strong: #3d4757;
     --player-fade: rgba(18,22,29,.65);
+    --hl: rgba(255, 189, 89, .3);
     }
   }
   :root[data-theme="dark"] {
@@ -64,6 +66,7 @@
     --grad: linear-gradient(135deg, #4d8dff 0%, #2fb6cc 100%);
     --line-strong: #3d4757;
     --player-fade: rgba(18,22,29,.65);
+    --hl: rgba(255, 189, 89, .3);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; height: 100%; }
@@ -201,6 +204,11 @@
   .seg.cur .txt { color: var(--text); }
   .seg.done .num { color: var(--good); }
   .seg .state { flex: 0 0 auto; width: 16px; height: 16px; margin-top: 3px; }
+  .seg .txt mark.hl {
+    background: var(--hl); color: inherit; border-radius: 3px;
+    cursor: pointer; padding: 1px 0;
+  }
+  .seg .txt mark.hl.hasnote { border-bottom: 2px dotted var(--warn); }
 
   .empty { text-align: center; color: var(--text-dim); padding: 40px 16px; font-size: 14px; }
 
@@ -1361,6 +1369,8 @@ const State = {
   doneSet: new Set(),
   curUtter: null,        // 瀏覽器語音 utterance
   docId: null,           // 書庫文件 id（sha1(raw)）
+  marks: [],             // 當前文件的重點（marks store 的快取副本）
+  lastBoundary: 0,       // 瀏覽器 TTS 的 onboundary charIndex（標記定位用）
 };
 
 // 把當前聽到第幾段寫回書庫（fire-and-forget）
@@ -1599,15 +1609,54 @@ State.audio.addEventListener("timeupdate", () => {
 });
 
 /* ============ 段落渲染 ============ */
+// 段內文字依 marks 切片渲染:被任一重點覆蓋的區間用 <mark class=hl> 包起來
+function renderSegText(el, i) {
+  const s = State.segments[i];
+  const ms = State.marks.filter(m => m.segIndex === i);
+  el.innerHTML = "";
+  if (!ms.length) { el.textContent = s; return; }
+  const bounds = new Set([0, s.length]);
+  for (const m of ms) {
+    bounds.add(Math.max(0, Math.min(s.length, m.start)));
+    bounds.add(Math.max(0, Math.min(s.length, m.end)));
+  }
+  const pts = [...bounds].sort((a, b) => a - b);
+  for (let k = 0; k + 1 < pts.length; k++) {
+    const a = pts[k], b = pts[k + 1];
+    const covering = ms.filter(m => m.start <= a && m.end >= b);
+    const node = document.createElement(covering.length ? "mark" : "span");
+    node.textContent = s.slice(a, b);
+    if (covering.length) {
+      node.className = "hl" + (covering.some(m => m.note) ? " hasnote" : "");
+      node.dataset.id = covering[0].id;
+    }
+    el.appendChild(node);
+  }
+}
+function rerenderSeg(i) {
+  const el = $$(".seg")[i];
+  if (el) renderSegText(el.querySelector(".txt"), i);
+}
+
 function renderSegments() {
   const list = $("#segList");
   list.innerHTML = "";
   State.segments.forEach((s, i) => {
     const div = document.createElement("div");
     div.className = "seg";
+    div.dataset.i = i;
     div.innerHTML = `<span class="num">${i + 1}</span><span class="txt"></span>`;
-    div.querySelector(".txt").textContent = s.length > 120 ? s.slice(0, 120) + "…" : s;
-    div.addEventListener("click", () => playIndex(i));
+    renderSegText(div.querySelector(".txt"), i);
+    div.addEventListener("click", (e) => {
+      const hl = e.target.closest("mark.hl");
+      if (hl) {
+        const m = State.marks.find(x => x.id === Number(hl.dataset.id));
+        if (m) openMarkModal(m);
+        return;
+      }
+      if (!window.getSelection().isCollapsed) return; // 選取中不觸發跳播
+      playIndex(i);
+    });
     list.appendChild(div);
   });
   const chars = State.segments.reduce((a, s) => a + s.length, 0);
@@ -1627,6 +1676,7 @@ async function loadText(raw, title, plain) {
   State.prefetching.clear();
   State.index = -1;
   State.docId = null;
+  State.marks = [];
 
   // EPUB 已抽成純文字，不再過 markdown 清理
   const clean = plain ? raw.replace(/\n{3,}/g, "\n\n").trim() : cleanMarkdown(raw, $("#skipCode").checked);
@@ -1652,6 +1702,8 @@ async function loadText(raw, title, plain) {
     doc.updatedAt = Date.now();
     await docsPut(doc);
     if (old && old.lastIndex > 0 && old.lastIndex < State.segments.length) resumeAt = old.lastIndex;
+    State.marks = await marksByDoc(id);
+    renderSegments();          // marks 到位後重渲染高亮
     renderLibrary();
   } catch (e) {}
 
