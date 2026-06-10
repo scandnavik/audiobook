@@ -69,6 +69,8 @@
     --hl: rgba(255, 189, 89, .3);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  /* hidden 屬性永遠生效：class 設了 display（.btn/.icon-btn/.modal-back…）也蓋不掉 */
+  [hidden] { display: none !important; }
   html, body { margin: 0; padding: 0; height: 100%; }
   body {
     background: var(--bg);
@@ -285,7 +287,9 @@
     padding: 8px 12px; border-radius: 6px; font-size: 14px; color: var(--text-dim);
     max-height: 110px; overflow-y: auto; margin-bottom: 12px;
   }
-  #selMarkBtn { position: fixed; z-index: 60; min-height: 40px; padding: 0 14px; font-size: 14px; }
+  #selMarkBtn { position: fixed; z-index: 60; min-height: 40px; padding: 0 14px; font-size: 14px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .2); }
+  #selMarkBtn[hidden] { display: none; } /* .btn 的 display 會蓋掉 hidden 屬性，必須明寫 */
 </style>
 </head>
 <body>
