@@ -1462,7 +1462,10 @@ const State = {
   index: -1,             // 當前段
   playing: false,
   mode: "audio",         // 'audio'（雲端）| 'speech'（瀏覽器）
-  audio: new Audio(),
+  audio: null,           // 當前播放的 <audio>（雙緩衝 audioEls 之一）
+  standby: null,         // 待命 <audio>：預載下一段，交界零空隙交換（iOS 背景不掉 session）
+  standbyIndex: -1,      // 待命元素目前載的是哪一段（-1 = 未載）
+  audioEls: [],          // 兩個 <audio> 元素池
   prefetching: new Set(),// 正在預抓的 index
   blobUrls: new Map(),   // index -> objectURL（記憶體）
   doneSet: new Set(),
@@ -1496,16 +1499,27 @@ function closeSettings() {
   document.querySelector("main").style.overflow = "";
 }
 
-// 把 State.rate 套到正在播的音檔＋更新顯示（瀏覽器 TTS 下一段才生效）
+// 把 State.rate 套到兩個音檔元素＋更新顯示（瀏覽器 TTS 見 setRate 的重唸處理）
 function applyRate() {
-  State.audio.playbackRate = State.rate;
+  State.audioEls.forEach(el => { try { el.playbackRate = State.rate; } catch (e) {} });
   $("#rateVal").textContent = State.rate.toFixed(2).replace(/0$/, "") + "×";
 }
 
+let rateRestartTimer = null;
 function setRate(r) {
   State.rate = r;
   try { localStorage.setItem("shuoshu.rate", String(r)); } catch (e) {}
   applyRate();
+  // 瀏覽器內建引擎：speechSynthesis 無法改變「正在唸」的語句速度，只能用新速度重唸當前段。
+  // debounce 400ms，連點 ＋／－ 收斂成一次重唸（會跳回該段開頭——Web Speech API 限制，無法 resume）。
+  if (State.playing && cfgNow().provider === "browser") {
+    clearTimeout(rateRestartTimer);
+    rateRestartTimer = setTimeout(() => {
+      if (State.playing && cfgNow().provider === "browser" && State.index >= 0) {
+        speakBrowser(State.segments[State.index]);
+      }
+    }, 400);
+  }
 }
 
 // 把當前聽到第幾段寫回書庫（fire-and-forget）
@@ -1635,9 +1649,84 @@ function updateUI() {
   }
 }
 
-async function playIndex(i) {
+/* ============ 雙 <audio> 緩衝：背景鎖屏無縫接續 ============ */
+// iOS 背景音訊很挑：單一元素「pause→換 src→play」的空隙會讓系統收回音訊權限，
+// 下一段的程式化 play() 在背景被擋 → 播到段落交界就停。改用兩個元素交替：
+// 下一段預先載進待命元素，交界時零空隙直接 play()，音訊 session 不中斷。
+function makeAudioEl() {
+  const a = new Audio();
+  a.preload = "auto";
+  try { a.preservesPitch = true; } catch (e) {}
+  a.addEventListener("ended", () => { if (a === State.audio && State.playing) onSegmentEnded(); });
+  a.addEventListener("loadedmetadata", () => { try { a.playbackRate = State.rate; } catch (e) {} });
+  a.addEventListener("play", () => {
+    try { a.playbackRate = State.rate; } catch (e) {}
+    if (a === State.audio) mediaPlaying(true);
+  });
+  a.addEventListener("timeupdate", () => {
+    if (a !== State.audio || !a.duration) return;
+    const pct = ((State.index + a.currentTime / a.duration) / State.segments.length) * 100;
+    $("#progressBar").style.width = Math.min(100, pct) + "%";
+    updatePositionState(a);
+  });
+  return a;
+}
+function pauseStandby() { try { State.standby.pause(); } catch (e) {} }
+function pauseAllAudio() { State.audioEls.forEach(el => { try { el.pause(); } catch (e) {} }); }
+// 交換當前／待命元素（待命已預載好下一段）
+function swapToStandby() {
+  const old = State.audio;
+  State.audio = State.standby;
+  State.standby = old;
+  State.standbyIndex = -1;
+  try { old.pause(); } catch (e) {}
+}
+// 把第 i 段載入指定 audio 元素（src 走記憶體層／快取／雲端合成）
+async function loadAudioEl(el, i) {
+  const url = await getSegmentUrl(i);
+  el.src = url;
+  try { el.playbackRate = State.rate; } catch (e) {}
+  try { el.load(); } catch (e) {}
+  return url;
+}
+// 預載下一段進待命元素（雲端才需要；瀏覽器引擎無 <audio>）
+async function preloadStandby(i) {
+  if (cfgNow().provider === "browser") { State.standbyIndex = -1; return; }
+  if (i < 0 || i >= State.segments.length) { State.standbyIndex = -1; return; }
+  if (State.standbyIndex === i && State.standby.src) return;
+  try { await loadAudioEl(State.standby, i); State.standbyIndex = i; }
+  catch (e) { State.standbyIndex = -1; }
+}
+// 維護鎖屏播放狀態與進度（iOS 控制中心／鎖屏顯示用）
+function mediaPlaying(on) {
+  if ("mediaSession" in navigator) {
+    try { navigator.mediaSession.playbackState = on ? "playing" : "paused"; } catch (e) {}
+  }
+}
+function updatePositionState(el) {
+  if (!("mediaSession" in navigator) || !navigator.mediaSession.setPositionState) return;
+  if (!el.duration || !isFinite(el.duration)) return;
+  try {
+    navigator.mediaSession.setPositionState({
+      duration: el.duration,
+      playbackRate: el.playbackRate || 1,
+      position: Math.min(el.currentTime, el.duration),
+    });
+  } catch (e) {}
+}
+// 手機＋瀏覽器引擎：鎖屏／切背景會被系統暫停，提示一次改用雲端引擎
+function maybeWarnSpeechBackground() {
+  if (cfgNow().provider !== "browser") return;
+  if (!/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) return;
+  try {
+    if (localStorage.getItem("shuoshu.speechBgWarned")) return;
+    localStorage.setItem("shuoshu.speechBgWarned", "1");
+  } catch (e) {}
+  toast("提醒:瀏覽器內建語音在手機鎖屏／切背景會被系統暫停,需要背景播放請改用雲端引擎", false);
+}
+
+async function playIndex(i, fromAuto) {
   if (i < 0 || i >= State.segments.length) { stopAll(); return; }
-  stopAudioOnly();
   State.index = i;
   State.playing = true;
   const cfg = cfgNow();
@@ -1645,25 +1734,47 @@ async function playIndex(i) {
   saveProgress();
 
   if (cfg.provider === "browser") {
+    pauseAllAudio();
     setStatus("playing", "朗讀中");
     speakBrowser(State.segments[i]);
+    mediaPlaying(true);
+    maybeWarnSpeechBackground();
     return;
   }
 
   // 雲端模式
   if (!cfg.key) { stopAll(); toast(`請先在「語音設定」填入 ${PROVIDERS[cfg.provider].label} 的 API Key`, true); openSettings(); return; }
   if (cfg.provider === "azure" && !cfg.region) { stopAll(); toast("請填 Azure region（例如 eastasia）", true); openSettings(); return; }
+
+  // 自動接續且待命元素已預載這一段 → 零空隙交換（背景鎖屏不掉 session 的關鍵路徑）
+  if (fromAuto && State.standbyIndex === i && State.standby.src) {
+    swapToStandby();
+    State.srcIndex = i;
+    try { State.audio.playbackRate = State.rate; } catch (e) {}
+    try {
+      await State.audio.play();
+      setStatus("playing", "播放中");
+      mediaPlaying(true);
+      preloadStandby(i + 1); // 再預載下一段
+      prefetch(i + 2);
+      return;
+    } catch (e) { /* 待命元素播放失敗 → 落到下方一般路徑重載（State.audio 已是交換後的元素）*/ }
+  }
+
+  // 一般路徑：首播／使用者跳段／預載未命中
+  try { State.audio.pause(); } catch (e) {}
+  pauseStandby();
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
   setStatus("loading", "合成中");
   try {
-    const url = await getSegmentUrl(i);
+    await loadAudioEl(State.audio, i);
     if (State.index !== i || !State.playing) return; // 期間被切換
-    State.audio.src = url;
     State.srcIndex = i;
     // 語速一律在播放端調（playbackRate，瀏覽器預設保持音高），換速不重新合成、不另收費
-    State.audio.playbackRate = State.rate;
     await State.audio.play();
     setStatus("playing", "播放中");
-    prefetch(i + 1); // 預抓接下來兩段，段落交界不停頓
+    mediaPlaying(true);
+    preloadStandby(i + 1); // 預載下一段（背景無縫接續用）
     prefetch(i + 2);
   } catch (e) {
     State.playing = false;
@@ -1695,7 +1806,7 @@ function speakBrowser(text) {
 function onSegmentEnded() {
   State.doneSet.add(State.index);
   if (State.index + 1 < State.segments.length) {
-    playIndex(State.index + 1);
+    playIndex(State.index + 1, true); // fromAuto：走待命元素零空隙交換
   } else {
     stopAll();
     toast("全部朗讀完畢");
@@ -1703,12 +1814,13 @@ function onSegmentEnded() {
 }
 
 function stopAudioOnly() {
-  try { State.audio.pause(); } catch (e) {}
+  pauseAllAudio();
   if ("speechSynthesis" in window) speechSynthesis.cancel(); // headless／舊環境無此 API
 }
 function stopAll() {
   State.playing = false;
   stopAudioOnly();
+  mediaPlaying(false);
   setStatus("", "待機");
   updateUI();
 }
@@ -1721,6 +1833,7 @@ function togglePlay() {
     State.playing = false;
     if (cfg.provider === "browser") speechSynthesis.pause();
     else State.audio.pause();
+    mediaPlaying(false);
     setStatus("", "暫停");
     updateUI();
   } else {
@@ -1730,26 +1843,22 @@ function togglePlay() {
     if (cfg.provider === "browser") {
       if (speechSynthesis.paused) speechSynthesis.resume();
       else speakBrowser(State.segments[State.index]);
+      mediaPlaying(true);
       setStatus("playing", "朗讀中");
     } else {
-      if (canResumeSrc(State.audio.src, State.srcIndex, State.index)) { State.audio.play(); setStatus("playing", "播放中"); }
+      if (canResumeSrc(State.audio.src, State.srcIndex, State.index)) { State.audio.play(); mediaPlaying(true); setStatus("playing", "播放中"); }
       else playIndex(State.index); // src 是舊段（合成中被暫停／換書／合成失敗）→ 重新取對的段
     }
     updateUI();
   }
 }
 
-State.audio.addEventListener("ended", () => { if (State.playing) onSegmentEnded(); });
-// iOS Safari 每次載入新音檔會把 playbackRate 重設回 1，且 metadata 到位前設定可能被忽略——
-// 在這兩個事件重新套用目前速度，調速才不會每段被打回原速
-State.audio.addEventListener("loadedmetadata", () => { State.audio.playbackRate = State.rate; });
-State.audio.addEventListener("play", () => { State.audio.playbackRate = State.rate; });
-State.audio.addEventListener("timeupdate", () => {
-  if (!State.audio.duration) return;
-  const segFrac = State.audio.currentTime / State.audio.duration;
-  const pct = ((State.index + segFrac) / State.segments.length) * 100;
-  $("#progressBar").style.width = Math.min(100, pct) + "%";
-});
+// 建立雙緩衝元素池：事件監聽在 makeAudioEl 內逐元素掛，用 a === State.audio 守門，
+// 待命元素的 loadedmetadata/timeupdate 不會干擾 UI。playbackRate 也在 play／loadedmetadata 重套，
+// 修 iOS Safari 每載入新音檔把 playbackRate 打回 1 的老問題。
+State.audioEls = [makeAudioEl(), makeAudioEl()];
+State.audio = State.audioEls[0];
+State.standby = State.audioEls[1];
 
 /* ============ 段落渲染 ============ */
 // 段內文字依 marks 切片渲染:被任一重點覆蓋的區間用 <mark class=hl> 包起來
@@ -2135,10 +2244,10 @@ async function loadText(raw, title, plain, fixedSegLen) {
   // 釋放舊的 blob url
   State.blobUrls.forEach(u => URL.revokeObjectURL(u));
   State.blobUrls.clear();
-  // 清掉 audio 裡殘留的舊書音檔（revoke 不會卸載已載入的媒體，留著會被續播分支播出來）
+  // 清掉兩個元素裡殘留的舊書音檔（revoke 不會卸載已載入的媒體，留著會被續播分支播出來）
   State.srcIndex = -1;
-  State.audio.removeAttribute("src");
-  try { State.audio.load(); } catch (e) {}
+  State.standbyIndex = -1;
+  State.audioEls.forEach(el => { el.removeAttribute("src"); try { el.load(); } catch (e) {} });
   State.doneSet.clear();
   State.prefetching.clear();
   State.index = -1;
